@@ -1,35 +1,25 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { AnalysisProvider, useAnalysis } from './context/AnalysisContext.jsx'
+import Layout from './components/Layout.jsx'
+import UploadPage from './pages/UploadPage.jsx'
+import ReviewPage from './pages/ReviewPage.jsx'
+import SummaryPage from './pages/SummaryPage.jsx'
 
-function App() {
-  const [count, setCount] = useState(0)
+function AppContent() {
+  const { state } = useAnalysis()
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <Layout>
+      {(state.step === 'upload' || state.step === 'processing') && <UploadPage />}
+      {state.step === 'review' && <ReviewPage />}
+      {state.step === 'summary' && <SummaryPage />}
+    </Layout>
   )
 }
 
-export default App
+export default function App() {
+  return (
+    <AnalysisProvider>
+      <AppContent />
+    </AnalysisProvider>
+  )
+}
