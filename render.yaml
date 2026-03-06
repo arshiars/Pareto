@@ -1,0 +1,26 @@
+services:
+  # ── Backend ──────────────────────────────────────────────────────────────────
+  - type: web
+    name: tamberg-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set manually in Render dashboard
+      - key: FRONTEND_URL
+        sync: false          # set to your Render frontend URL after first deploy
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  - type: web
+    name: tamberg-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # set to your Render backend URL after first deploy
