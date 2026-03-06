@@ -1,6 +1,7 @@
 import { Router } from 'express'
-import { upload } from '../middleware/upload.js'
+import { upload, uploadExcel } from '../middleware/upload.js'
 import { extractFromDocuments, extractField, researchField } from '../services/claude.js'
+import { populateExcelTemplate } from '../services/excel.js'
 
 const router = Router()
 
@@ -51,6 +52,31 @@ router.post('/research', async (req, res) => {
   } catch (err) {
     console.error('Research error:', err.message)
     res.status(500).json({ error: err.message || 'Research failed' })
+  }
+})
+
+router.post('/populate-excel', async (req, res) => {
+  try {
+    await runUpload(req, res, uploadExcel.single('file'))
+    if (!req.file) return res.status(400).json({ error: 'No Excel file uploaded' })
+
+    let noiData = {}
+    try { noiData = JSON.parse(req.body.noiData || '{}') } catch {}
+
+    console.log(`Populating Excel template: ${req.file.originalname} (${(req.file.size / 1024).toFixed(0)} KB)`)
+    const { buffer, report } = await populateExcelTemplate(req.file.buffer, noiData)
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="CMHC_Populated_${req.file.originalname}"`,
+      'Content-Length': buffer.length,
+      'X-Population-Report': Buffer.from(JSON.stringify(report)).toString('base64'),
+      'Access-Control-Expose-Headers': 'X-Population-Report',
+    })
+    res.send(buffer)
+  } catch (err) {
+    console.error('Excel population error:', err.message)
+    res.status(500).json({ error: err.message || 'Excel population failed' })
   }
 })
 

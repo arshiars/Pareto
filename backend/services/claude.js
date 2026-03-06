@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PDFDocument } from 'pdf-lib'
 import { buildExtractionPrompt, buildResearchPrompt, buildFieldExtractionPrompt } from '../utils/extractionPrompt.js'
+import { buildExcelMappingPrompt } from '../utils/excelPrompt.js'
 
 const MAX_PDF_PAGES = 100
 
@@ -16,7 +17,7 @@ function stripCodeFences(text) {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
 }
 
-function safeParseJson(text) {
+export function safeParseJson(text) {
   const cleaned = stripCodeFences(text)
   try {
     return JSON.parse(cleaned)
@@ -153,6 +154,7 @@ export async function extractFromDocuments(files) {
       messages: [{ role: 'user', content: contentBlocks }],
     })
 
+    if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
     const raw = response.content[0].text
     results.push(safeParseJson(raw))
   }
@@ -170,6 +172,7 @@ export async function extractField(file, fieldDescription) {
     messages: [{ role: 'user', content: contentBlocks }],
   })
 
+  if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
   return safeParseJson(response.content[0].text)
 }
 
@@ -180,5 +183,22 @@ export async function researchField(fieldName, propertyContext) {
     messages: [{ role: 'user', content: buildResearchPrompt(fieldName, propertyContext) }],
   })
 
+  if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
   return safeParseJson(response.content[0].text)
+}
+
+export async function getExcelMappings(cellMap, noiData) {
+  const prompt = buildExcelMappingPrompt(cellMap, noiData)
+  console.log(`Excel mapping prompt: ${prompt.length} chars`)
+
+  const response = await getClient().messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 4096,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
+  const textBlock = response.content.find((b) => b.type === 'text')
+  if (!textBlock) throw new Error('Claude returned no text block in response')
+  return safeParseJson(textBlock.text)
 }

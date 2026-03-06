@@ -29,6 +29,23 @@ export async function extractFieldFromDocument(file, fieldDescription) {
   return res.json()
 }
 
+export async function populateExcel(file, noiData) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('noiData', JSON.stringify(noiData))
+
+  const res = await fetch(`${BASE_URL}/analysis/populate-excel`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error(await parseError(res))
+
+  const buffer = await res.arrayBuffer()
+  let report = null
+  try {
+    const h = res.headers.get('X-Population-Report')
+    if (h) report = JSON.parse(atob(h))
+  } catch {}
+  return { buffer, report }
+}
+
 export async function researchField(fieldName, propertyContext) {
   const res = await fetch(`${BASE_URL}/analysis/research`, {
     method: 'POST',

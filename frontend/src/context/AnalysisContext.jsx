@@ -4,7 +4,7 @@ import { extractDocuments, researchField } from '../services/api.js'
 const AnalysisContext = createContext(null)
 
 const initialState = {
-  step: 'upload', // upload | processing | review | summary
+  step: 'upload', // upload | processing | review | summary | excel
   files: [],
   extractedData: null,
   userOverrides: {},
@@ -26,15 +26,9 @@ function reducer(state, action) {
     case 'SET_EXTRACTED':
       return { ...state, extractedData: action.data, step: 'review', error: null }
     case 'SET_OVERRIDE':
-      return {
-        ...state,
-        userOverrides: { ...state.userOverrides, [action.key]: action.value },
-      }
+      return { ...state, userOverrides: { ...state.userOverrides, [action.key]: action.value } }
     case 'SET_DEFAULT':
-      return {
-        ...state,
-        defaults: { ...state.defaults, [action.key]: action.value },
-      }
+      return { ...state, defaults: { ...state.defaults, [action.key]: action.value } }
     case 'SET_ERROR':
       return { ...state, error: action.error, step: 'upload' }
     case 'RESET':
@@ -59,36 +53,22 @@ export function AnalysisProvider({ children }) {
   }
 
   async function research(fieldName) {
-    const propertyContext = {
+    return researchField(fieldName, {
       propertyInfo: state.extractedData?.propertyInfo,
       unitBreakdown: state.extractedData?.unitBreakdown,
-    }
-    return researchField(fieldName, propertyContext)
+    })
   }
 
-  function setOverride(key, value) {
-    dispatch({ type: 'SET_OVERRIDE', key, value })
-  }
-
-  function setDefault(key, value) {
-    dispatch({ type: 'SET_DEFAULT', key, value })
-  }
-
-  function goToSummary() {
-    dispatch({ type: 'SET_STEP', step: 'summary' })
-  }
-
-  function goToReview() {
-    dispatch({ type: 'SET_STEP', step: 'review' })
-  }
-
-  function reset() {
-    dispatch({ type: 'RESET' })
-  }
+  function setOverride(key, value) { dispatch({ type: 'SET_OVERRIDE', key, value }) }
+  function setDefault(key, value)  { dispatch({ type: 'SET_DEFAULT', key, value }) }
+  function goToSummary()           { dispatch({ type: 'SET_STEP', step: 'summary' }) }
+  function goToReview()            { dispatch({ type: 'SET_STEP', step: 'review' }) }
+  function goToExcel()             { dispatch({ type: 'SET_STEP', step: 'excel' }) }
+  function reset()                 { dispatch({ type: 'RESET' }) }
 
   return (
     <AnalysisContext.Provider
-      value={{ state, analyze, research, setOverride, setDefault, goToSummary, goToReview, reset }}
+      value={{ state, analyze, research, setOverride, setDefault, goToSummary, goToReview, goToExcel, reset }}
     >
       {children}
     </AnalysisContext.Provider>
