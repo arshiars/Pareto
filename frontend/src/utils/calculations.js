@@ -14,10 +14,6 @@ export function calculateNOI(extractedData, userOverrides, defaults) {
     return sum + count * rent * 12
   }, 0)
 
-  // --- Vacancy ---
-  const vacancyRate = defaults.vacancyRate ?? 0.05
-  const vacancyLoss = gpr * vacancyRate
-
   // --- Additional Income (annual) ---
   const addl = extractedData?.additionalIncome ?? {}
   const parking = get(addl.parking?.monthlyTotal ? addl.parking.monthlyTotal * 12 : 0, 'additionalIncome.parking')
@@ -27,8 +23,13 @@ export function calculateNOI(extractedData, userOverrides, defaults) {
 
   const additionalIncome = parking + storage + laundry + otherIncome
 
+  // --- Vacancy (applied on total revenue including additional income) ---
+  const vacancyRate = defaults.vacancyRate ?? 0.05
+  const grossRevenue = gpr + additionalIncome
+  const vacancyLoss = grossRevenue * vacancyRate
+
   // --- EGI ---
-  const egi = gpr - vacancyLoss + additionalIncome
+  const egi = grossRevenue - vacancyLoss
 
   // --- Expenses ---
   const opex = extractedData?.operatingExpenses ?? {}
