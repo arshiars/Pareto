@@ -66,13 +66,13 @@ PROPERTY DATA:
 ${formatNoiData(noiData)}
 
 TEMPLATE STRUCTURE:
-(Only rows with [EMPTY] input cells are shown, with surrounding rows for label context. [FORMULA] cells auto-calculate — never write to them.)
+(Only blue-font input cells and their surrounding label rows are shown. [INPUT] = blue-font cell you must fill. [FORMULA] = auto-calculated, never touch.)
 ${cellMap}
 
 INSTRUCTIONS:
-1. Work sheet by sheet, row by row. Read every row carefully before assigning values.
-2. For each [EMPTY] cell, identify its label (usually to the left or directly above) and match it to the correct field in the property data.
-3. Never write to a [FORMULA] cell. Only [EMPTY] cells can receive values.
+1. Work sheet by sheet. Each [INPUT label="..."] cell tells you exactly what it represents — use that label to match the correct value from the property data.
+2. Only map [INPUT] cells. Never map [FORMULA] cells or any cell not marked [INPUT].
+3. The cell address is embedded in each [INPUT] marker (e.g. E15=[INPUT label="Property Taxes"]). Use that exact address — do not guess or shift columns.
 4. For unit mix rows: fill both unit count AND monthly rent per unit. Read each row's label carefully — 1BR rent must go in the 1BR row, 2BR in the 2BR row, etc. Do not mix them up.
 5. For percentage/rate cells: determine from context whether the template expects decimal (0.05) or whole number (5). Default to decimal.
 6. Annual vs monthly: check the label or nearby context carefully. Do not put an annual amount where monthly is expected, or vice versa.
