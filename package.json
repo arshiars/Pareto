@@ -1,7 +1,7 @@
 {
-  "name": "tamberg",
+  "name": "Tamberg",
   "version": "1.0.0",
-  "description": "CMHC writing tool",
+  "description": "CMHC Underwriting",
   "scripts": {
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
