@@ -1,0 +1,12 @@
+{
+  "name": "tamberg",
+  "version": "1.0.0",
+  "description": "CMHC writing tool",
+  "scripts": {
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "lint:backend": "npm run lint --prefix backend",
+    "lint": "npm run lint:frontend && npm run lint:backend"
+  }
+}
