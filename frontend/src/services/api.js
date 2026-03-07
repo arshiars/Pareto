@@ -10,9 +10,10 @@ async function parseError(res) {
   }
 }
 
-export async function extractDocuments(files) {
+export async function extractDocuments(files, labels = []) {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
+  if (labels.some(Boolean)) formData.append('labels', JSON.stringify(labels))
 
   const res = await fetch(`${BASE_URL}/analysis/extract`, { method: 'POST', body: formData })
   if (!res.ok) throw new Error(await parseError(res))
@@ -29,9 +30,8 @@ export async function extractFieldFromDocument(file, fieldDescription) {
   return res.json()
 }
 
-export async function populateExcel(file, noiData) {
+export async function populateExcel(noiData) {
   const formData = new FormData()
-  formData.append('file', file)
   formData.append('noiData', JSON.stringify(noiData))
 
   const res = await fetch(`${BASE_URL}/analysis/populate-excel`, { method: 'POST', body: formData })

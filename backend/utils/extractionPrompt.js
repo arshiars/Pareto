@@ -10,8 +10,23 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) matching thi
     "totalUnits": number | null,
     "totalAppliances": number | null,
     "appliancesNote": string | null,
+    "region": string | null,
+    "housingType": string | null,
+    "frameConstruction": string | null,
+    "vintage": string | null,
+    "vacancyRate": number | null,
     "source": string
   },
+  "unitDetails": [
+    {
+      "unitNumber": string | null,
+      "unitType": "Bachelor" | "1 Bedroom" | "2 Bedrooms" | "3 Bedrooms" | "4+ Bedrooms",
+      "monthlyRent": number | null,
+      "sqft": number | null,
+      "vacant": boolean,
+      "marketUnit": boolean
+    }
+  ],
   "unitBreakdown": [
     {
       "type": string,
@@ -22,10 +37,27 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) matching thi
     }
   ],
   "additionalIncome": {
-    "parking":  { "found": boolean, "monthlyTotal": number | null, "source": string },
-    "storage":  { "found": boolean, "monthlyTotal": number | null, "source": string },
-    "laundry":  { "found": boolean, "monthlyTotal": number | null, "source": string },
-    "other":    { "found": boolean, "monthlyTotal": number | null, "description": string | null, "source": string }
+    "parking": {
+      "found": boolean,
+      "ugStallsTotal": number | null,
+      "ugStallsOccupied": number | null,
+      "ugMonthlyRate": number | null,
+      "exStallsTotal": number | null,
+      "exStallsOccupied": number | null,
+      "exMonthlyRate": number | null,
+      "monthlyTotal": number | null,
+      "source": string
+    },
+    "storage": {
+      "found": boolean,
+      "unitsTotal": number | null,
+      "unitsOccupied": number | null,
+      "monthlyRate": number | null,
+      "monthlyTotal": number | null,
+      "source": string
+    },
+    "laundry": { "found": boolean, "monthlyTotal": number | null, "source": string },
+    "other":   { "found": boolean, "monthlyTotal": number | null, "description": string | null, "source": string }
   },
   "operatingExpenses": {
     "propertyTaxes":         { "found": boolean, "annualAmount": number | null, "source": string },
@@ -42,15 +74,43 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) matching thi
 }
 
 Rules:
-- Extract exact numbers from documents; do not estimate
+- Extract exact numbers; do not estimate unless instructed
 - Set "found": true only when the value is explicitly stated in the documents
-- "source" should briefly describe where you found the value (e.g., "Rent Roll - Page 1", "Not found in documents")
-- For unitBreakdown, list each unit type separately (e.g., "1BR", "2BR", "Bachelor")
-- Monthly rent should be per-unit average; all dollar amounts as plain numbers (no $ or commas)
+- "source" should briefly describe where you found the value (e.g., "Rent Roll p.1", "Not found in documents")
+- All dollar amounts as plain numbers (no $ or commas)
+
+unitDetails rules:
+- Extract EVERY individual unit from the rent roll — one object per unit
+- unitType must be exactly one of the five allowed strings; map "1BR"→"1 Bedroom", "2BR"→"2 Bedrooms", "3BR"→"3 Bedrooms", "Studio"→"Bachelor", "4BR"/"4+"→"4+ Bedrooms"
+- vacant: true if unit is marked vacant/empty, false if occupied
+- marketUnit: false if the unit is affordable / subsidized / below-market-rent; true for all regular market-rate units; default true when not indicated
+- If documents list only a summary (no individual units), return []
+
+propertyInfo rules:
+- region: province or city-region (e.g. "Ontario", "BC Lower Mainland", "Alberta") — null if not determinable
+- housingType: "Standard Rental Housing", "Student", "Retirement", or "SRO" — infer from context if clear, else null
+- frameConstruction: "Wood Frame", "Concrete", "Masonry", "Steel", or "Mixed" — from documents if stated, else null
+- vintage: decade the building was built (e.g. "1970s", "1990s", "2010s") — from documents if stated, else null
+- vacancyRate: if unitDetails are available, compute as (count of units where vacant=true) / (total unit count) expressed as decimal (e.g. 0.04 for 4%); also accept if a vacancy rate is explicitly stated in the document; null if neither is available
 - If totalAppliances is not stated, estimate from unit count and note in appliancesNote
-- analysis.purchasePrice: formatted string if found (e.g., "$2,500,000"), otherwise null
-- analysis.keyInfo: 3–6 concise bullet strings about the property (type, age, location, occupancy, renovations)
-- analysis.risks: 2–5 concise bullet strings identifying underwriting risks (below-market rents, vacancy, deferred maintenance, etc.); empty array if none found`
+
+parking rules:
+- Distinguish UG (underground) from EX (exterior/surface) if the documents do so
+- ugMonthlyRate / exMonthlyRate are per-stall monthly amounts
+- monthlyTotal is combined total monthly parking income
+- If only a combined total is available, set ugStallsTotal/exStallsTotal/rates to null and populate monthlyTotal only
+
+storage rules:
+- monthlyRate is per-unit monthly amount; monthlyTotal is total monthly storage income
+
+Operating expenses:
+- annualAmount: annual CAD; if monthly is given multiply by 12
+- For property taxes: use the grand total / total due (includes all levies and surcharges)
+- For insurance: use the total premium including all taxes and fees
+
+analysis.purchasePrice: formatted string if found (e.g. "$2,500,000"), else null
+analysis.keyInfo: 3–6 concise bullet strings about the property
+analysis.risks: 2–5 concise bullet strings identifying underwriting risks; empty array if none found`
 }
 
 export function buildResearchPrompt(fieldName, propertyContext) {

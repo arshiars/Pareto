@@ -1,13 +1,13 @@
 const steps = [
-  { key: 'upload',     label: 'Upload',   num: 1 },
-  { key: 'processing', label: 'Analysis', num: 2 },
-  { key: 'review',     label: 'Review',   num: 3 },
-  { key: 'summary',    label: 'Summary',  num: 4 },
-  { key: 'excel',      label: 'Excel',    num: 5, optional: true },
+  { key: 'upload',  label: 'Upload',            num: 1 },
+  { key: 'review',  label: 'Review & Summary',  num: 2 },
+  { key: 'excel',   label: 'Excel',             num: 3 },
 ]
 
 export default function StepIndicator({ currentStep }) {
-  const currentIndex = steps.findIndex((s) => s.key === currentStep)
+  // 'processing' maps to 'upload' so step 1 stays highlighted during extraction
+  const resolvedStep = currentStep === 'processing' ? 'upload' : currentStep
+  const currentIndex = steps.findIndex((s) => s.key === resolvedStep)
 
   return (
     <div className="flex items-center gap-0 mb-8">
@@ -19,25 +19,22 @@ export default function StepIndicator({ currentStep }) {
           <div key={step.key} className="flex items-center">
             <div className="flex flex-col items-center">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all
-                  ${done   ? 'bg-success text-white'
-                  : active ? 'bg-primary text-white'
-                  : step.optional ? 'bg-border text-gray-400 border-2 border-dashed border-border'
-                  : 'bg-border text-gray-400'}`}
+                className={`w-7 h-7 flex items-center justify-center text-xs font-semibold transition-all duration-200
+                  ${done   ? 'bg-primary text-white'
+                  : active ? 'border-2 border-primary text-primary bg-white'
+                  : 'border border-border text-[#777777] bg-white'}`}
               >
                 {done ? '✓' : step.num}
               </div>
-              <div className="flex flex-col items-center mt-1">
-                <span className={`text-xs font-medium ${active ? 'text-primary' : done ? 'text-success' : 'text-gray-400'}`}>
+              <div className="flex flex-col items-center mt-1.5">
+                <span className={`text-[11px] font-medium tracking-wide uppercase
+                  ${active ? 'text-primary' : done ? 'text-primary/60' : 'text-[#777777]'}`}>
                   {step.label}
                 </span>
-                {step.optional && (
-                  <span className="text-[10px] text-gray-400 leading-tight">optional</span>
-                )}
               </div>
             </div>
             {i < steps.length - 1 && (
-              <div className={`h-0.5 w-14 mx-2 mb-5 transition-all ${i < currentIndex ? 'bg-success' : 'bg-border'}`} />
+              <div className={`h-px w-14 mx-2 mb-6 transition-all duration-200 ${i < currentIndex ? 'bg-primary/40' : 'bg-border'}`} />
             )}
           </div>
         )

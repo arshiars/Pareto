@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PDFDocument } from 'pdf-lib'
 import { buildExtractionPrompt, buildResearchPrompt, buildFieldExtractionPrompt } from '../utils/extractionPrompt.js'
-import { buildExcelMappingPrompt } from '../utils/excelPrompt.js'
 
 const MAX_PDF_PAGES = 100
 
@@ -48,14 +47,6 @@ async function splitPdf(buffer) {
   return chunks
 }
 
-function buildDocumentBlocks(file) {
-  const isPdf = file.mimetype === 'application/pdf' || file.mimetype === 'application/x-pdf'
-  if (isPdf) return null // handled async in extractSingleFile
-  return [{
-    type: 'image',
-    source: { type: 'base64', media_type: file.mimetype, data: file.buffer.toString('base64') },
-  }]
-}
 
 async function fileToContentBlocks(file) {
   const isPdf = file.mimetype === 'application/pdf' || file.mimetype === 'application/x-pdf'
@@ -75,7 +66,11 @@ async function fileToContentBlocks(file) {
 // ─── Merge helpers ────────────────────────────────────────────────────────────
 
 function mergePropertyInfo(infos) {
-  const out = { address: null, propertyType: null, totalUnits: null, totalAppliances: null, appliancesNote: null, source: '' }
+  const out = {
+    address: null, propertyType: null, totalUnits: null, totalAppliances: null,
+    appliancesNote: null, region: null, housingType: null,
+    frameConstruction: null, vintage: null, vacancyRate: null, source: '',
+  }
   for (const info of infos) {
     if (!info) continue
     for (const key of Object.keys(out)) {
@@ -130,6 +125,7 @@ function mergeExtractions(results) {
   if (results.length === 1) return results[0]
   return {
     propertyInfo: mergePropertyInfo(results.map((r) => r.propertyInfo)),
+    unitDetails: results.flatMap((r) => r.unitDetails ?? []),
     unitBreakdown: mergeUnitBreakdown(results.map((r) => r.unitBreakdown)),
     additionalIncome: mergeAdditionalIncome(results.map((r) => r.additionalIncome)),
     operatingExpenses: mergeOperatingExpenses(results.map((r) => r.operatingExpenses)),
@@ -139,17 +135,21 @@ function mergeExtractions(results) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function extractFromDocuments(files) {
+export async function extractFromDocuments(files, labels = []) {
   const results = []
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    console.log(`[${i + 1}/${files.length}] Processing: ${file.originalname} (${file.mimetype})`)
+    const label = labels[i] || null
+    console.log(`[${i + 1}/${files.length}] Processing: ${file.originalname} (${file.mimetype})${label ? ` [${label}]` : ''}`)
 
     const contentBlocks = await fileToContentBlocks(file)
+    if (label) {
+      contentBlocks.unshift({ type: 'text', text: `Document type: "${label}". Use this context to focus your extraction accordingly.` })
+    }
     contentBlocks.push({ type: 'text', text: buildExtractionPrompt() })
 
     const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-opus-4-6',
       max_tokens: 4096,
       messages: [{ role: 'user', content: contentBlocks }],
     })
@@ -167,7 +167,7 @@ export async function extractField(file, fieldDescription) {
   contentBlocks.push({ type: 'text', text: buildFieldExtractionPrompt(fieldDescription) })
 
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-opus-4-6',
     max_tokens: 512,
     messages: [{ role: 'user', content: contentBlocks }],
   })
@@ -178,7 +178,7 @@ export async function extractField(file, fieldDescription) {
 
 export async function researchField(fieldName, propertyContext) {
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-opus-4-6',
     max_tokens: 1024,
     messages: [{ role: 'user', content: buildResearchPrompt(fieldName, propertyContext) }],
   })
@@ -187,18 +187,3 @@ export async function researchField(fieldName, propertyContext) {
   return safeParseJson(response.content[0].text)
 }
 
-export async function getExcelMappings(cellMap, noiData) {
-  const prompt = buildExcelMappingPrompt(cellMap, noiData)
-  console.log(`Excel mapping prompt: ${prompt.length} chars`)
-
-  const response = await getClient().messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 4096,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
-  const textBlock = response.content.find((b) => b.type === 'text')
-  if (!textBlock) throw new Error('Claude returned no text block in response')
-  return safeParseJson(textBlock.text)
-}

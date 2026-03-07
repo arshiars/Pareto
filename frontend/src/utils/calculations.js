@@ -16,8 +16,14 @@ export function calculateNOI(extractedData, userOverrides, defaults) {
 
   // --- Additional Income (annual) ---
   const addl = extractedData?.additionalIncome ?? {}
-  const parking = get(addl.parking?.monthlyTotal ? addl.parking.monthlyTotal * 12 : 0, 'additionalIncome.parking')
-  const storage = get(addl.storage?.monthlyTotal ? addl.storage.monthlyTotal * 12 : 0, 'additionalIncome.storage')
+  const pk = addl.parking ?? {}
+  const parkingMonthly = pk.monthlyTotal
+    ?? ((pk.ugStallsTotal ?? 0) * (pk.ugMonthlyRate ?? 0) + (pk.exStallsTotal ?? 0) * (pk.exMonthlyRate ?? 0))
+  const parking = get(parkingMonthly * 12, 'additionalIncome.parking')
+
+  const st = addl.storage ?? {}
+  const storageMonthly = st.monthlyTotal ?? ((st.unitsTotal ?? 0) * (st.monthlyRate ?? 0))
+  const storage = get(storageMonthly * 12, 'additionalIncome.storage')
   const laundry = get(addl.laundry?.monthlyTotal ? addl.laundry.monthlyTotal * 12 : 0, 'additionalIncome.laundry')
   const otherIncome = get(addl.other?.monthlyTotal ? addl.other.monthlyTotal * 12 : 0, 'additionalIncome.other')
 
