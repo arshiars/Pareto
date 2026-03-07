@@ -1,7 +1,12 @@
 import { Router } from 'express'
-import { upload, uploadExcel } from '../middleware/upload.js'
+import { readFile } from 'fs/promises'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { upload } from '../middleware/upload.js'
 import { extractFromDocuments, extractField, researchField } from '../services/claude.js'
 import { populateExcelTemplate } from '../services/excel.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const router = Router()
 
@@ -17,8 +22,10 @@ router.post('/extract', async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' })
     }
+    let labels = []
+    try { labels = JSON.parse(req.body.labels || '[]') } catch {}
     console.log(`Extracting from ${req.files.length} file(s):`, req.files.map((f) => f.originalname))
-    const result = await extractFromDocuments(req.files)
+    const result = await extractFromDocuments(req.files, labels)
     res.json(result)
   } catch (err) {
     console.error('Extraction error:', err.message)
@@ -57,18 +64,18 @@ router.post('/research', async (req, res) => {
 
 router.post('/populate-excel', async (req, res) => {
   try {
-    await runUpload(req, res, uploadExcel.single('file'))
-    if (!req.file) return res.status(400).json({ error: 'No Excel file uploaded' })
-
     let noiData = {}
     try { noiData = JSON.parse(req.body.noiData || '{}') } catch {}
 
-    console.log(`Populating Excel template: ${req.file.originalname} (${(req.file.size / 1024).toFixed(0)} KB)`)
-    const { buffer, report } = await populateExcelTemplate(req.file.buffer, noiData)
+    const templatePath = join(__dirname, '../templates/economics-template.xlsx')
+    const templateBuffer = await readFile(templatePath)
+
+    console.log('Populating built-in Economics template')
+    const { buffer, report } = await populateExcelTemplate(templateBuffer, noiData)
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="CMHC_Populated_${req.file.originalname}"`,
+      'Content-Disposition': 'attachment; filename="CMHC_Populated.xlsx"',
       'Content-Length': buffer.length,
       'X-Population-Report': Buffer.from(JSON.stringify(report)).toString('base64'),
       'Access-Control-Expose-Headers': 'X-Population-Report',

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useAnalysis } from '../context/AnalysisContext.jsx'
 import { calculateNOI } from '../utils/calculations.js'
 import { formatCurrency, formatPercent } from '../utils/formatters.js'
@@ -7,6 +7,135 @@ import StepIndicator from '../components/StepIndicator.jsx'
 import Card from '../components/ui/Card.jsx'
 import Button from '../components/ui/Button.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
+import Select from '../components/ui/Select.jsx'
+import Input from '../components/ui/Input.jsx'
+
+const KS_OPTIONS = {
+  loanType:           ['Term', 'Construction'],
+  region:             ['ON', 'BC', 'QC', 'Atlantic', 'Prairies & Territories'],
+  propertyType:       ['Residential', 'Mixed-Use'],
+  housingType:        ['Standard Rental Housing', 'Student', 'SRO', 'Retirement'],
+  program:            ['MLI Market', 'MLI Select'],
+  egiTestMet:         ['Yes', 'No'],
+  frameConstruction:  ['Wood Frame', 'Concrete Frame'],
+  projectStatus:      ['New Construction', 'Existing Property'],
+  premiumCalculation: ['11 units and less', '12 units and more'],
+  selectBase:         ['KingSett CMHC', 'KingSett Bridge', 'CMHC Benchmarks', 'Borrower'],
+  selectComparison:   ['KingSett CMHC', 'KingSett Bridge', 'CMHC Benchmarks', 'Borrower'],
+  utilitiesType: [
+    'Landlord pays all utilities',
+    'Landlord pays common area',
+    'Landlord pays heating & water',
+    'Landlord pays heating & hydro',
+    'Landlord pays water & hydro',
+    'Landlord pays heating',
+    'Landlord pays water',
+    'Landlord pays hydro',
+    'Landlord pays no utilities',
+  ],
+  numberOfAdvances: ['Two or less', 'More than two'],
+  vintage: ['Pre 60s', '60s', '70s', '80s', '90s', '2000s', '2010s', '2020+'],
+}
+
+const KS_FIELDS = [
+  { key: 'loanType',           label: 'Loan Type' },
+  { key: 'region',             label: 'Region' },
+  { key: 'propertyType',       label: 'Property Type' },
+  { key: 'housingType',        label: 'Housing Type' },
+  { key: 'program',            label: 'Program' },
+  { key: 'egiTestMet',         label: 'EGI Test Met' },
+  { key: 'frameConstruction',  label: 'Frame' },
+  { key: 'projectStatus',      label: 'Project Status' },
+  { key: 'premiumCalculation', label: 'Premium Calculation' },
+  { key: 'selectBase',         label: 'Select Base' },
+  { key: 'selectComparison',   label: 'Select Comparison' },
+  { key: 'utilitiesType',      label: 'Utilities' },
+  { key: 'numberOfAdvances',   label: 'Number of Advances' },
+  { key: 'vintage',            label: 'Estimated Vintage' },
+]
+
+// ── KS input guessing helpers ─────────────────────────────────────────────────
+function guessRegion(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (/ontario|\bon\b/.test(s))                                                         return 'ON'
+  if (/british columbia|\bbc\b/.test(s))                                                return 'BC'
+  if (/quebec|\bqc\b/.test(s))                                                          return 'QC'
+  if (/atlantic|nova scotia|new brunswick|prince edward|newfoundland|labrador/.test(s)) return 'Atlantic'
+  if (/alberta|saskatchewan|manitoba|prairies|territories|yukon|northwest|nunavut/.test(s)) return 'Prairies & Territories'
+  const opts = KS_OPTIONS.region
+  return opts.includes(v) ? v : ''
+}
+
+function guessPropertyType(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (/mixed/.test(s))       return 'Mixed-Use'
+  if (/residential/.test(s)) return 'Residential'
+  const opts = KS_OPTIONS.propertyType
+  return opts.includes(v) ? v : ''
+}
+
+function guessHousingType(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (/student/.test(s))                return 'Student'
+  if (/sro|single.?room/.test(s))       return 'SRO'
+  if (/retirement|senior/.test(s))      return 'Retirement'
+  if (/standard/.test(s))               return 'Standard Rental Housing'
+  const opts = KS_OPTIONS.housingType
+  return opts.includes(v) ? v : ''
+}
+
+function guessFrame(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (/wood/.test(s))     return 'Wood Frame'
+  if (/concrete/.test(s)) return 'Concrete Frame'
+  const opts = KS_OPTIONS.frameConstruction
+  return opts.includes(v) ? v : ''
+}
+
+function guessVintage(v) {
+  if (!v) return ''
+  const year = parseInt(v)
+  if (!isNaN(year)) {
+    if (year < 1960) return 'Pre 60s'
+    if (year < 1970) return '60s'
+    if (year < 1980) return '70s'
+    if (year < 1990) return '80s'
+    if (year < 2000) return '90s'
+    if (year < 2010) return '2000s'
+    if (year < 2020) return '2010s'
+    return '2020+'
+  }
+  const opts = KS_OPTIONS.vintage
+  return opts.includes(v) ? v : ''
+}
+
+function guessPremiumCalc(totalUnits) {
+  if (totalUnits == null) return ''
+  return totalUnits <= 11 ? '11 units and less' : '12 units and more'
+}
+
+function guessProjectStatus(pi) {
+  if (!pi) return ''
+  // Construction loan / new build signals
+  if (/new.?const|under.?const/i.test(String(pi.projectStatus ?? ''))) return 'New Construction'
+  // If a vintage year exists the building already exists
+  if (pi.vintage) return 'Existing Property'
+  return ''
+}
+
+function guessCapRate(noi, analysis) {
+  if (!noi || noi <= 0) return ''
+  // Try to parse purchase price from analysis.purchasePrice string (e.g. "$4,250,000")
+  const pp = analysis?.purchasePrice
+  if (!pp) return ''
+  const price = parseFloat(String(pp).replace(/[^0-9.]/g, ''))
+  if (!price || price <= 0) return ''
+  return ((noi / price) * 100).toFixed(2)
+}
 
 function SpreadsheetIcon() {
   return (
@@ -18,28 +147,76 @@ function SpreadsheetIcon() {
 }
 
 export default function ExcelPage() {
-  const { state, goToSummary } = useAnalysis()
+  const { state, goToReview, setDefault } = useAnalysis()
   const { extractedData, userOverrides, defaults } = state
 
-  const [file, setFile]             = useState(null)
   const [status, setStatus]         = useState('idle') // idle | loading | done | error
   const [errorMsg, setErrorMsg]     = useState(null)
   const [downloadUrl, setDownloadUrl] = useState(null)
-  const [downloadName, setDownloadName] = useState('CMHC_Populated.xlsx')
   const [report, setReport]         = useState(null)
-  const fileInputRef = useRef(null)
+
+  const [ksInputs, setKsInputs] = useState(() => {
+    const pi  = extractedData?.propertyInfo ?? {}
+    const noi = calculateNOI(extractedData, {}, {
+      vacancyRate: 0.03, managementFeeRate: 0.0425, otherDeductionsRate: 0.01,
+      replacementReservePerAppliance: 180,
+    })
+    return {
+      loanType:           '',
+      region:             guessRegion(pi.region),
+      propertyType:       guessPropertyType(pi.propertyType),
+      housingType:        guessHousingType(pi.housingType),
+      program:            '',
+      egiTestMet:         '',
+      frameConstruction:  guessFrame(pi.frameConstruction),
+      projectStatus:      guessProjectStatus(pi),
+      premiumCalculation: guessPremiumCalc(pi.totalUnits),
+      selectBase:         '',
+      selectComparison:   '',
+      utilitiesType:      '',
+      numberOfAdvances:   '',
+      vintage:            guessVintage(pi.vintage),
+      capRate:            guessCapRate(noi.noi, extractedData?.analysis),
+      // F213-F220 numeric fields
+      ltv:                '',
+      heatPumps:          '',
+      elevators:          '',
+      affordabilityPts:   '',
+      energyEfficiencyPts:'',
+      accessibilityPts:   '',
+      totalDevCost:       '',
+      // Financing parameters (cells TBD)
+      term:               '5',
+      amortization:       '35',
+      lenderFee:          '0',
+      cmhcMaxRate:        '4.5',
+    }
+  })
+
+  function setKsField(key, value) {
+    setKsInputs((prev) => ({ ...prev, [key]: value }))
+  }
 
   if (!extractedData) return null
 
   const noi = calculateNOI(extractedData, userOverrides, defaults)
 
-  // Full NOI data payload sent to backend
+  // Full data payload sent to backend for Excel population
   const noiData = {
     propertyInfo: extractedData.propertyInfo,
+    // Individual unit rows for the Rent Roll tab — apply any rent overrides
+    unitDetails: (extractedData.unitDetails ?? []).map((u) => ({
+      ...u,
+      monthlyRent: userOverrides[`unit.${u.unitType}.rent`] ?? u.monthlyRent,
+    })),
     unitBreakdown: (extractedData.unitBreakdown ?? []).map((u) => ({
       ...u,
       effectiveMonthlyRent: userOverrides[`unit.${u.type}.rent`] ?? u.avgMonthlyRent,
     })),
+    // Raw extracted operating expenses (preferred over calculated values for cell accuracy)
+    operatingExpenses: extractedData.operatingExpenses,
+    // Raw extracted additional income (includes parking/storage count+rate details)
+    additionalIncome: extractedData.additionalIncome,
     income: {
       gpr:          noi.gpr,
       vacancyRate:  defaults.vacancyRate,
@@ -64,31 +241,20 @@ export default function ExcelPage() {
       totalOpEx:              noi.totalOpEx,
     },
     noi: noi.noi,
-  }
-
-  function handleFileChange(e) {
-    const f = e.target.files[0] || null
-    setFile(f)
-    setStatus('idle')
-    setErrorMsg(null)
-    if (downloadUrl) URL.revokeObjectURL(downloadUrl)
-    setDownloadUrl(null)
+    ksInputs,
   }
 
   async function handlePopulate() {
-    if (!file) return
     setStatus('loading')
     setErrorMsg(null)
+    if (downloadUrl) URL.revokeObjectURL(downloadUrl)
 
     try {
-      const { buffer, report: r } = await populateExcel(file, noiData)
+      const { buffer, report: r } = await populateExcel(noiData)
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
-      const url = URL.createObjectURL(blob)
-      const name = `CMHC_Populated_${file.name}`
-      setDownloadUrl(url)
-      setDownloadName(name)
+      setDownloadUrl(URL.createObjectURL(blob))
       setReport(r)
       setStatus('done')
     } catch (err) {
@@ -101,7 +267,7 @@ export default function ExcelPage() {
     if (!downloadUrl) return
     const a = document.createElement('a')
     a.href = downloadUrl
-    a.download = downloadName
+    a.download = 'CMHC_Populated.xlsx'
     a.click()
   }
 
@@ -116,15 +282,13 @@ export default function ExcelPage() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-primary">Populate Excel Template</h2>
-            <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">Optional</span>
           </div>
           <p className="text-gray-500 mt-1">
-            Upload your CMHC Excel template. Claude will read every cell, identify all input fields,
-            and populate them — without touching any formula cells.
+            Review your inputs, then generate a populated CMHC Economics template ready to submit.
           </p>
         </div>
-        <Button variant="secondary" onClick={goToSummary}>
-          ← Back to Summary
+        <Button variant="secondary" onClick={goToReview}>
+          ← Back to Review
         </Button>
       </div>
 
@@ -132,43 +296,23 @@ export default function ExcelPage() {
         {/* Left: upload + status */}
         <div className="col-span-2 space-y-4">
           <Card className="p-6 space-y-5">
-            <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Upload Template</h3>
-
-            {/* Drop zone */}
-            <div
-              onClick={() => fileInputRef.current.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
-                ${file ? 'border-primary/50 bg-primary/3' : 'border-border hover:border-primary/40 hover:bg-primary/2'}`}
-            >
-              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <SpreadsheetIcon />
-                </div>
-                {file ? (
-                  <div>
-                    <p className="font-semibold text-primary">{file.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{(file.size / 1024).toFixed(0)} KB — click to change</p>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="font-medium text-primary">Click to upload your CMHC Excel template</p>
-                    <p className="text-gray-400 text-sm mt-1">.xlsx or .xls — formulas will be preserved</p>
-                  </div>
-                )}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <SpreadsheetIcon />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-primary">Economics Template</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Built-in CMHC Economics template — ready to populate.</p>
               </div>
             </div>
 
             {/* Loading */}
             {status === 'loading' && (
-              <div className="flex flex-col items-center gap-4 py-8">
+              <div className="flex flex-col items-center gap-4 py-6">
                 <Spinner size="lg" />
                 <div className="text-center">
-                  <p className="font-semibold text-primary">Analyzing spreadsheet structure…</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Claude is reading every input cell and mapping your NOI data.
-                    This may take up to 30 seconds.
-                  </p>
+                  <p className="font-semibold text-primary">Populating template…</p>
+                  <p className="text-sm text-gray-500 mt-1">Writing your NOI data to the Economics sheet.</p>
                 </div>
               </div>
             )}
@@ -180,7 +324,9 @@ export default function ExcelPage() {
                   <div>
                     <p className="font-semibold text-success">Template populated successfully</p>
                     <p className="text-sm text-gray-500 mt-0.5">
-                      {report ? `${report.applied} cells filled${report.lowConfidenceSkipped > 0 ? `, ${report.lowConfidenceSkipped} low-confidence skipped` : ''}` : 'All identifiable input cells filled — formula cells untouched'}
+                      {report
+                        ? `${report.rentRollRows ?? 0} unit rows + ${report.economicsCells ?? 0} cells written`
+                        : 'Cells written — formula cells untouched'}
                     </p>
                   </div>
                   <Button variant="primary" onClick={handleDownload}>
@@ -216,8 +362,11 @@ export default function ExcelPage() {
 
             {/* Action */}
             {status !== 'loading' && (
-              <div className="flex justify-end">
-                <Button variant="primary" size="lg" disabled={!file} onClick={handlePopulate}>
+              <div className="flex justify-end items-center gap-3">
+                {status === 'done' && (
+                  <p className="text-xs text-gray-400">Changed a value above? Re-populate to update the file.</p>
+                )}
+                <Button variant="primary" size="lg" onClick={handlePopulate}>
                   {status === 'done' ? 'Re-populate' : 'Populate Template'}
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -227,14 +376,176 @@ export default function ExcelPage() {
             )}
           </Card>
 
+          {/* Calculation Defaults */}
+          <Card className="p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Calculation Defaults</h3>
+              <p className="text-xs text-gray-400 mt-0.5">These rates affect the NOI calculation used to populate the template.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Vacancy Rate"
+                suffix="%"
+                type="number"
+                value={(defaults.vacancyRate * 100).toFixed(2)}
+                onChange={(e) => setDefault('vacancyRate', Number(e.target.value) / 100)}
+                placeholder="3.00"
+              />
+              <Input
+                label="Management Fee Rate"
+                suffix="%"
+                type="number"
+                value={(defaults.managementFeeRate * 100).toFixed(2)}
+                onChange={(e) => setDefault('managementFeeRate', Number(e.target.value) / 100)}
+                placeholder="4.25"
+              />
+              <Input
+                label="Other Deductions Rate"
+                suffix="%"
+                type="number"
+                value={(defaults.otherDeductionsRate * 100).toFixed(2)}
+                onChange={(e) => setDefault('otherDeductionsRate', Number(e.target.value) / 100)}
+                placeholder="1.00"
+              />
+              <Input
+                label="Replacement Reserve / Appliance"
+                prefix="$"
+                type="number"
+                value={defaults.replacementReservePerAppliance}
+                onChange={(e) => setDefault('replacementReservePerAppliance', Number(e.target.value))}
+                placeholder="180"
+              />
+            </div>
+          </Card>
+
+          {/* Financing Parameters */}
+          <Card className="p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Financing Parameters</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Mortgage terms used in the Economics sheet.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Term"
+                suffix="yrs"
+                type="number"
+                value={ksInputs.term}
+                onChange={(e) => setKsField('term', e.target.value)}
+                placeholder="5"
+              />
+              <Input
+                label="Amortization"
+                suffix="yrs"
+                type="number"
+                value={ksInputs.amortization}
+                onChange={(e) => setKsField('amortization', e.target.value)}
+                placeholder="35"
+              />
+              <Input
+                label="Lender Fee"
+                suffix="%"
+                type="number"
+                value={ksInputs.lenderFee}
+                onChange={(e) => setKsField('lenderFee', e.target.value)}
+                placeholder="0"
+              />
+              <Input
+                label="CMHC Max Rate"
+                suffix="%"
+                type="number"
+                value={ksInputs.cmhcMaxRate}
+                onChange={(e) => setKsField('cmhcMaxRate', e.target.value)}
+                placeholder="4.5"
+              />
+            </div>
+          </Card>
+
+          {/* KS Database Inputs */}
+          <Card className="p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">KS Database Inputs</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Select values for fields that require manual input in the Economics sheet (F200–F220).</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {KS_FIELDS.map(({ key, label }) => (
+                <Select
+                  key={key}
+                  label={label}
+                  value={ksInputs[key]}
+                  options={KS_OPTIONS[key]}
+                  onChange={(e) => setKsField(key, e.target.value)}
+                />
+              ))}
+              <Input
+                label="Cap Rate"
+                suffix="%"
+                type="number"
+                placeholder="e.g. 5.50"
+                value={ksInputs.capRate}
+                onChange={(e) => setKsField('capRate', e.target.value)}
+              />
+              <Input
+                label="LTV Limit"
+                suffix="%"
+                type="number"
+                placeholder="e.g. 85"
+                value={ksInputs.ltv}
+                onChange={(e) => setKsField('ltv', e.target.value)}
+              />
+              <Input
+                label="Heat Pumps & AC Units"
+                type="number"
+                placeholder="count"
+                value={ksInputs.heatPumps}
+                onChange={(e) => setKsField('heatPumps', e.target.value)}
+              />
+              <Input
+                label="Elevators (Wood Frame)"
+                type="number"
+                placeholder="count"
+                value={ksInputs.elevators}
+                onChange={(e) => setKsField('elevators', e.target.value)}
+              />
+              <Input
+                label="Affordability Points"
+                type="number"
+                placeholder="0"
+                value={ksInputs.affordabilityPts}
+                onChange={(e) => setKsField('affordabilityPts', e.target.value)}
+              />
+              <Input
+                label="Energy Efficiency Points"
+                type="number"
+                placeholder="0"
+                value={ksInputs.energyEfficiencyPts}
+                onChange={(e) => setKsField('energyEfficiencyPts', e.target.value)}
+              />
+              <Input
+                label="Accessibility Points"
+                type="number"
+                placeholder="0"
+                value={ksInputs.accessibilityPts}
+                onChange={(e) => setKsField('accessibilityPts', e.target.value)}
+              />
+              <Input
+                label="Total Development Cost"
+                prefix="$"
+                type="number"
+                placeholder="e.g. 5000000"
+                value={ksInputs.totalDevCost}
+                onChange={(e) => setKsField('totalDevCost', e.target.value)}
+              />
+            </div>
+          </Card>
+
           {/* How it works */}
           <Card className="p-5">
             <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">How It Works</h3>
             <ol className="space-y-2 text-sm text-gray-600">
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Claude reads every cell in your template — values, labels, and formulas.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> It identifies all input cells (blank cells adjacent to labels like "Property Address", "Vacancy Rate", etc.).</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> It maps your extracted NOI data to the correct cells by matching CMHC field names and labels.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">4.</span> Formula cells are <strong>never touched</strong> — they will auto-calculate from the populated inputs.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Your NOI data — extracted from documents in step 1 and reviewed in step 2 — is finalized and ready to write.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> Review KS Database Inputs and Financing Parameters above, then click <strong>Populate Template</strong>.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> The tool writes values directly to the mapped input cells: income, expenses, unit breakdown, and KS database fields.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">4.</span> Formula cells are <strong>never touched</strong> — they auto-calculate from the populated inputs.</li>
             </ol>
           </Card>
         </div>

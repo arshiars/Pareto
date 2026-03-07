@@ -43,7 +43,8 @@ export default function DocumentUpload({ onAnalyze, disabled }) {
   }
 
   function handleAnalyze() {
-    onAnalyze(files)
+    const labels = files.map((_, i) => fileLabels[i] || '')
+    onAnalyze(files, labels)
   }
 
   return (

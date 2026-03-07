@@ -1,245 +1,370 @@
 import ExcelJS from 'exceljs'
-import { getExcelMappings } from './claude.js'
 
-const MAX_ROWS = 500
-const MAX_COLS = 30
-const CONTEXT_ROWS_BEFORE = 5
-const CONTEXT_ROWS_AFTER  = 2
+// ─── Hardcoded cell map ────────────────────────────────────────────────────────
+// These never change because the template never changes.
+// Economics expense columns: AJ=2024 Bills, AK=2024 O/S, AL=2024 Appraisal, AM=KS Estimate
+// We fill all four with the same extracted value so the NOI formula works regardless of source.
 
-/**
- * Returns true if the cell has a blue font — the standard Excel convention
- * for user-input cells in CMHC underwriting templates.
- */
-function isBlueFont(cell) {
-  const color = cell.font?.color
-  if (!color) return false
+const ECON      = 'Economics'
+const RENT_ROLL = 'Rent Roll'
 
-  if (color.argb) {
-    const hex = color.argb.replace('#', '').padStart(8, '0')
-    const r = parseInt(hex.slice(2, 4), 16)
-    const g = parseInt(hex.slice(4, 6), 16)
-    const b = parseInt(hex.slice(6, 8), 16)
-    // Blue dominant: blue channel > 100, clearly higher than red and green
-    return b > 100 && b > r * 1.3 && b > g * 1.1
-  }
-
-  // Theme indices 4–5 are typically blue in Office color schemes
-  if (color.theme === 4 || color.theme === 5) return true
-
-  return false
+// Unit type → Rent Roll unit code (column B)
+const UNIT_CODES = {
+  'bachelor':    0, 'bach': 0, 'studio': 0,
+  '1 bedroom':   1, '1br': 1, '1-bedroom': 1,
+  '2 bedrooms':  2, '2br': 2, '2-bedroom': 2,
+  '3 bedrooms':  3, '3br': 3, '3-bedroom': 3,
+  '4+ bedrooms': 4, '4br': 4, '4+ bedroom': 4, '4-bedroom': 4,
 }
 
-/**
- * Get the display text of a cell (handles rich text, dates, plain values).
- */
-function getCellText(cell) {
-  if (cell.type === ExcelJS.ValueType.Null || cell.value == null || cell.value === '') return ''
-  if (cell.type === ExcelJS.ValueType.RichText) return cell.text || ''
-  if (cell.type === ExcelJS.ValueType.Date) return cell.value?.toISOString?.()?.split('T')[0] ?? String(cell.value)
-  return cell.text !== undefined && cell.text !== '' ? cell.text : String(cell.value ?? '')
+function unitCode(unitType) {
+  if (unitType == null) return 1
+  return UNIT_CODES[String(unitType).toLowerCase().trim()] ?? 1
 }
 
-/**
- * For a given blue INPUT cell, find the nearest label by scanning:
- * 1. Left along the same row
- * 2. Up in the same column (up to 5 rows)
- * Returns the label text, or null if nothing found.
- */
-function findNearestLabel(sheet, rowNumber, colNumber) {
-  // Scan left on the same row
-  for (let c = colNumber - 1; c >= 1; c--) {
-    const cell = sheet.getCell(rowNumber, c)
-    if (cell.type === ExcelJS.ValueType.Merge || cell.type === ExcelJS.ValueType.Formula) continue
-    if (isBlueFont(cell)) continue
-    const val = getCellText(cell).trim()
-    if (val) return val
-  }
-  // Scan up in the same column
-  for (let r = rowNumber - 1; r >= Math.max(1, rowNumber - 5); r--) {
-    const cell = sheet.getCell(r, colNumber)
-    if (cell.type === ExcelJS.ValueType.Merge || cell.type === ExcelJS.ValueType.Formula) continue
-    if (isBlueFont(cell)) continue
-    const val = getCellText(cell).trim()
-    if (val) return val
-  }
-  return null
+// ─── Safe cell write — never overwrites formula cells ─────────────────────────
+function writeCell(sheet, addr, value) {
+  if (value === null || value === undefined || value === '') return false
+  const cell = sheet.getCell(addr)
+  if (cell.type === ExcelJS.ValueType.Formula || cell.formula) return false
+  cell.value = value
+  return true
 }
 
-/**
- * Walk every sheet and produce a compact text map for Claude.
- * Only blue-font cells (user input) are marked [INPUT label="..."].
- * The label is pre-computed so Claude never has to guess which column to use.
- * Formula cells → [FORMULA], other values → "text"
- */
-function buildCellMap(workbook) {
-  const sections = []
+function writeCells(sheet, addrs, value) {
+  let n = 0
+  for (const addr of addrs) { if (writeCell(sheet, addr, value)) n++ }
+  return n
+}
 
-  workbook.eachSheet((sheet) => {
-    const rowData = [] // { rowNumber, line: string, hasInput: boolean }
-    let rowCount = 0
+// ─── Rent Roll writer ──────────────────────────────────────────────────────────
+// One row per unit starting at row 30.
+// B=unitCode  D=unitNumber  E=vacant("Yes"/"")  F=rent  H=sqft
+//
+// Falls back to synthesizing rows from unitBreakdown when unitDetails is empty
+// (Claude only extracts individual units when a full rent roll is present in docs).
+function writeRentRoll(workbook, unitDetails, unitBreakdown) {
+  const log = []
 
-    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowCount >= MAX_ROWS) return
-      rowCount++
-
-      const parts = []
-      let hasInput = false
-      const colLimit = Math.min(Math.max(row.actualCellCount + 3, 5), MAX_COLS)
-
-      for (let c = 1; c <= colLimit; c++) {
-        const cell = row.getCell(c)
-        if (cell.type === ExcelJS.ValueType.Merge) continue
-
-        const addr = cell.address
-        const blue = isBlueFont(cell)
-
-        if (cell.type === ExcelJS.ValueType.Formula || cell.formula) {
-          parts.push(`${addr}=[FORMULA]`)
-        } else if (blue) {
-          const label = findNearestLabel(sheet, rowNumber, c)
-          const labelStr = label ? ` label="${label}"` : ''
-          const existing = cell.value != null && cell.value !== '' ? ` currently="${getCellText(cell)}"` : ''
-          parts.push(`${addr}=[INPUT${labelStr}${existing}]`)
-          hasInput = true
-        } else {
-          const val = getCellText(cell).trim()
-          if (!val) continue
-          parts.push(`${addr}="${val.length > 80 ? val.substring(0, 80) + '…' : val}"`)
-        }
+  // Prefer individual unit rows; fall back to one row per unit from breakdown summary
+  let rows = (Array.isArray(unitDetails) && unitDetails.length > 0) ? unitDetails : []
+  if (rows.length === 0) {
+    for (const ub of (unitBreakdown ?? [])) {
+      for (let i = 0; i < (ub.count ?? 0); i++) {
+        rows.push({
+          unitType:    ub.type,
+          unitNumber:  null,
+          monthlyRent: ub.effectiveMonthlyRent ?? ub.avgMonthlyRent ?? null,
+          sqft:        ub.avgSqft ?? null,
+          vacant:      false,
+        })
       }
-
-      if (parts.length > 0) {
-        rowData.push({ rowNumber, line: `Row ${rowNumber}: ${parts.join(', ')}`, hasInput })
-      }
-    })
-
-    // Include only rows with [INPUT] cells + surrounding context rows
-    const included = new Set()
-    rowData.forEach((r, i) => {
-      if (!r.hasInput) return
-      for (let c = Math.max(0, i - CONTEXT_ROWS_BEFORE); c <= Math.min(rowData.length - 1, i + CONTEXT_ROWS_AFTER); c++) {
-        included.add(c)
-      }
-    })
-
-    if (included.size === 0) return // no blue input cells on this sheet — skip
-
-    const lines = [`\n=== Sheet: "${sheet.name}" ===`]
-    const sortedIdxs = [...included].sort((a, b) => a - b)
-    let prev = -1
-    for (const idx of sortedIdxs) {
-      if (prev !== -1 && idx > prev + 1) lines.push('  ...')
-      lines.push(rowData[idx].line)
-      prev = idx
     }
+    if (rows.length > 0) log.push('  (synthesized from unit breakdown — no individual unit data)')
+  }
 
-    sections.push(lines.join('\n'))
+  if (rows.length === 0) {
+    return { written: 0, log: ['No unit data provided — Rent Roll skipped'] }
+  }
+
+  const sheet = workbook.getWorksheet(RENT_ROLL)
+  if (!sheet) return { written: 0, log: ['Rent Roll sheet not found in template'] }
+
+  const START_ROW = 30
+  let written = 0
+
+  rows.forEach((unit, i) => {
+    const row = START_ROW + i
+    sheet.getCell(`B${row}`).value = unitCode(unit.unitType)
+    if (unit.unitNumber != null && unit.unitNumber !== '') {
+      sheet.getCell(`D${row}`).value = String(unit.unitNumber)
+    }
+    sheet.getCell(`E${row}`).value = unit.vacant ? 'Yes' : 'No'
+    if (unit.monthlyRent != null) sheet.getCell(`F${row}`).value = unit.monthlyRent
+    if (unit.sqft != null)        sheet.getCell(`H${row}`).value = unit.sqft
+    const isMarket = unit.marketUnit !== false  // false only for affordable/subsidized units; default true
+    sheet.getCell(`I${row}`).value = isMarket ? 'Yes' : 'No'
+    written++
+    log.push(`  R${row}: ${unit.unitType ?? '?'} #${unit.unitNumber ?? '?'} $${unit.monthlyRent ?? '?'}/mo${unit.vacant ? ' [VACANT]' : ''}`)
   })
 
-  return sections.join('\n')
+  return { written, log }
 }
 
-const RATE_FIELD_PATTERN = /rate|pct|percent/i
-const RATE_LABEL_PATTERN = /rate|%|percent/i
+// ─── ControlBackEnd normalizers ───────────────────────────────────────────────
+// All values written to F200-F220 must exactly match ControlBackEnd list values.
 
-function sanitizeValue(value, field = '', label = '') {
-  if (typeof value !== 'number') return value
-  const looksLikeRate = RATE_FIELD_PATTERN.test(field) || RATE_LABEL_PATTERN.test(label)
-  if (looksLikeRate && value > 1) {
-    const fixed = value / 100
-    console.log(`  ⚠ Rate sanity fix: ${field} ${value} → ${fixed} (divided by 100)`)
-    return fixed
-  }
-  return value
+function normalizeRegion(v) {
+  if (!v) return null
+  const s = String(v).toLowerCase()
+  if (/ontario|\bon\b|toronto|ottawa|london|hamilton|windsor|kingston|brampton|mississauga/.test(s)) return 'ON'
+  if (/british columbia|\bbc\b|vancouver|victoria|surrey|kelowna|burnaby/.test(s))                  return 'BC'
+  if (/qu[eé]bec|\bqc\b|montr[eé]al|laval|gatineau/.test(s))                                       return 'QC'
+  if (/atlantic|nova scotia|new brunswick|prince edward|newfoundland|labrador|moncton|fredericton|halifax/.test(s)) return 'Atlantic'
+  if (/alberta|saskatchewan|manitoba|prairies|territories|yukon|northwest|nunavut|calgary|edmonton|winnipeg|regina|saskatoon/.test(s)) return 'Prairies & Territories'
+  const valid = ['ON', 'BC', 'QC', 'Atlantic', 'Prairies & Territories']
+  return valid.includes(v) ? v : null
 }
 
-/**
- * Apply Claude's mappings — only to [INPUT] (blue-font) cells.
- * Formula cells are double-checked and never overwritten.
- */
-function applyMappings(workbook, mappings) {
-  const applied = []
-  const skipped = []
-  const lowConfidence = []
+function normalizeHousingType(v) {
+  if (!v) return null
+  const s = String(v).toLowerCase()
+  if (/student/.test(s))                           return 'Student'
+  if (/sro|single.?room/.test(s))                  return 'SRO'
+  if (/retirement|senior/.test(s))                 return 'Retirement'
+  if (/standard/.test(s))                          return 'Standard Rental Housing'
+  const valid = ['Standard Rental Housing', 'Student', 'SRO', 'Retirement']
+  return valid.includes(v) ? v : null
+}
 
-  for (const m of mappings) {
-    if (m.confidence === 'low') {
-      lowConfidence.push(`LOW CONFIDENCE skipped: ${m.sheet}!${m.cell} = ${JSON.stringify(m.value)} (${m.field}: ${m.label})`)
-      continue
-    }
+function normalizeFrameConstruction(v) {
+  if (!v) return null
+  const s = String(v).toLowerCase()
+  if (/wood/.test(s))     return 'Wood Frame'
+  if (/concrete/.test(s)) return 'Concrete Frame'
+  const valid = ['Wood Frame', 'Concrete Frame']
+  return valid.includes(v) ? v : null
+}
 
-    const sheet = workbook.getWorksheet(m.sheet)
-    if (!sheet) {
-      skipped.push(`Sheet not found: "${m.sheet}" for cell ${m.cell}`)
-      continue
-    }
+function unitCountCategory(n) {
+  if (n == null) return null
+  return n <= 11 ? '11 units and less' : '12 units and more'
+}
 
-    const cell = sheet.getCell(m.cell)
+// ─── Economics writer ──────────────────────────────────────────────────────────
+function writeEconomics(workbook, data) {
+  const sheet = workbook.getWorksheet(ECON)
+  if (!sheet) return { written: 0, log: ['Economics sheet not found in template'] }
 
-    if (cell.type === ExcelJS.ValueType.Formula || cell.formula) {
-      skipped.push(`FORMULA PROTECTED: ${m.sheet}!${m.cell} (${m.field})`)
-      continue
-    }
+  const log = []
+  let written = 0
 
-    if (!isBlueFont(cell)) {
-      skipped.push(`NOT BLUE: ${m.sheet}!${m.cell} (${m.field}) — refusing to write to non-input cell`)
-      continue
-    }
-
-    const safeValue = sanitizeValue(m.value, m.field, m.label)
-    cell.value = safeValue
-
-    const readBack = sheet.getCell(m.cell).value
-    if (readBack !== safeValue) {
-      skipped.push(`WRITE VERIFY FAILED: ${m.sheet}!${m.cell} wrote ${safeValue} but read back ${readBack}`)
+  function w(addr, value, label) {
+    if (value == null) return
+    if (writeCell(sheet, addr, value)) {
+      written++
+      log.push(`  ${addr}: ${label} = ${value}`)
     } else {
-      applied.push(`✓ ${m.sheet}!${m.cell} = ${JSON.stringify(safeValue)} (${m.field}: ${m.label})`)
+      log.push(`  ${addr}: SKIPPED (formula cell) — ${label}`)
+    }
+  }
+  function wMany(addrs, value, label) {
+    if (value == null) return
+    const n = writeCells(sheet, addrs, value)
+    written += n
+    log.push(`  ${addrs.join('/')}: ${label} = ${value}`)
+  }
+
+  // ── Parking ──────────────────────────────────────────────────────────────────
+  // E16-E18 = occupancy efficiency = 90% (only when parking/storage data is present)
+  const pk = data.additionalIncome?.parking
+  if (pk?.found) {
+    w('E16', 0.9, 'UG Parking efficiency')
+    w('E17', 0.9, 'EX Parking efficiency')
+    if (pk.ugStallsTotal != null) {
+      w('F16', pk.ugStallsTotal, 'UG Parking total stalls')
+      w('G16', pk.ugMonthlyRate, 'UG Parking $/stall/mo')
+    }
+    if (pk.exStallsTotal != null) {
+      w('F17', pk.exStallsTotal, 'EX Parking total stalls')
+      w('G17', pk.exMonthlyRate, 'EX Parking $/stall/mo')
     }
   }
 
-  console.log('\n── Excel Population Results ──')
-  applied.forEach((l) => console.log(l))
-  if (lowConfidence.length) {
-    console.log('\n── Low Confidence (skipped) ──')
-    lowConfidence.forEach((l) => console.log(' ⚠', l))
+  // ── Storage ───────────────────────────────────────────────────────────────────
+  const st = data.additionalIncome?.storage
+  if (st?.found && st.unitsTotal != null) {
+    w('E18', 0.9, 'Storage efficiency')
+    w('F18', st.unitsTotal,  'Storage total units')
+    w('G18', st.monthlyRate, 'Storage $/unit/mo')
   }
-  if (skipped.length) {
-    console.log('\n── Skipped ──')
-    skipped.forEach((l) => console.log(' ⚠', l))
-  }
-  console.log(`\nTotal: ${applied.length} applied, ${lowConfidence.length} low-confidence skipped, ${skipped.length} skipped\n`)
 
-  return { applied, skipped, lowConfidence }
+  // ── H19: Other income (annual) ────────────────────────────────────────────────
+  // Anything without a stall/unit breakdown falls here, plus laundry and "other"
+  const laundryAnnual = (data.additionalIncome?.laundry?.monthlyTotal ?? 0) * 12
+  const otherAnnual   = (data.additionalIncome?.other?.monthlyTotal   ?? 0) * 12
+  const pkFallback    = (pk?.found && pk.ugStallsTotal == null && pk.exStallsTotal == null)
+    ? (pk.monthlyTotal ?? 0) * 12 : 0
+  const stFallback    = (st?.found && st.unitsTotal == null)
+    ? (st.monthlyTotal ?? 0) * 12 : 0
+  const h19Total      = laundryAnnual + otherAnnual + pkFallback + stFallback
+  if (h19Total > 0) w('H19', h19Total, 'Other income (annual, H19)')
+
+  // ── Vacancy rate ──────────────────────────────────────────────────────────────
+  // Read from income (frontend defaults), fall back to extracted propertyInfo
+  const vacancy = data.income?.vacancyRate ?? data.propertyInfo?.vacancyRate ?? null
+  if (vacancy != null) {
+    w('G22', vacancy, 'Vacancy Rate (G22)')
+    // AJ18 is market-level vacancy (5-yr average zone), not subject property — do not conflate
+  }
+
+  // ── Expenses (4 columns each) ─────────────────────────────────────────────────
+  const opex = data.operatingExpenses ?? {}
+
+  // Prefer raw extracted values; fall back to calculated values from noiData.expenses
+  const taxes = opex.propertyTaxes?.annualAmount ?? data.expenses?.propertyTaxes ?? null
+  const ins   = opex.insurance?.annualAmount     ?? data.expenses?.insurance      ?? null
+  const util  = opex.utilities?.annualAmount     ?? data.expenses?.utilities      ?? null
+
+  if (taxes != null) wMany(['AJ24', 'AK24', 'AL24', 'AM24'], taxes, 'Property Taxes')
+  if (ins   != null) wMany(['AJ25', 'AK25', 'AL25', 'AM25'], ins,   'Insurance')
+  if (util  != null) wMany(['AK26', 'AL26', 'AM26'],         util,  'Utilities')
+
+  // R&M and Payroll — write to source columns; writeCell guard skips any formula cells
+  const rm = opex.repairsAndMaintenance?.annualAmount ?? data.expenses?.repairsAndMaintenance ?? null
+  const pa = opex.payrollAndAdmin?.annualAmount       ?? data.expenses?.payrollAndAdmin       ?? null
+  if (rm != null) wMany(['AJ27', 'AK27', 'AL27', 'AM27'], rm, 'Repairs & Maintenance')
+  if (pa != null) wMany(['AJ28', 'AK28', 'AL28', 'AM28'], pa, 'Payroll & Admin')
+
+  // ── KS underwriting inputs ────────────────────────────────────────────────────
+  // ksInputs (user-selected dropdowns) take precedence; fall back to extracted propertyInfo.
+  // All values normalized to exact ControlBackEnd strings before writing.
+  const pi = data.propertyInfo ?? {}
+  const ks = data.ksInputs ?? {}
+
+  // Normalize: user dropdown values already match ControlBackEnd; raw extracted values need mapping
+  const region   = normalizeRegion(ks.region || pi.region)
+  const housing  = normalizeHousingType(ks.housingType || pi.housingType)
+  const frame    = normalizeFrameConstruction(ks.frameConstruction || pi.frameConstruction)
+  const propType = ks.propertyType || pi.propertyType
+  const vintage  = ks.vintage      || pi.vintage
+
+  // ── Mortgage / financing parameters ──────────────────────────────────────────
+  // I68 = CMHC Term (5 or 10 yrs) — master switch for pricing regime
+  // I69 = Amortization (years) — used in every PMT formula; 0 or blank causes #NUM!
+  // I71 = Max Rate per COI — used in all DSC stress tests and buydown calc
+  if (ks.term != null && ks.term !== '') {
+    const termVal = parseInt(ks.term)
+    if (!isNaN(termVal)) w('I68', termVal, 'CMHC Term (I68)')
+  }
+  if (ks.amortization != null && ks.amortization !== '') {
+    const amortVal = parseInt(ks.amortization)
+    if (!isNaN(amortVal) && amortVal > 0) w('I69', amortVal, 'Amortization (I69)')
+  }
+  if (ks.cmhcMaxRate != null && ks.cmhcMaxRate !== '') {
+    const maxRateVal = parseFloat(ks.cmhcMaxRate)
+    if (!isNaN(maxRateVal) && maxRateVal > 0) w('I71', maxRateVal > 1 ? maxRateVal / 100 : maxRateVal, 'CMHC Max Rate (I71)')
+  }
+
+  // ── KS underwriting inputs (F200–F220) ───────────────────────────────────────
+  // Only F column matters — D200-D220 are cosmetic display cells with no formula references.
+  if (ks.loanType)           w('F200', ks.loanType,           'Loan Type')
+  if (region)                w('F201', region,                 'Region')
+  if (propType)              w('F202', propType,               'Property Type')
+  if (housing)               w('F203', housing,                'Housing Type')
+  if (ks.program)            w('F204', ks.program,             'Program')
+  if (ks.egiTestMet)         w('F205', ks.egiTestMet,          'EGI Test Met')
+  if (frame)                 w('F206', frame,                  'Frame Construction')
+  if (ks.projectStatus)      w('F207', ks.projectStatus,       'Project Status')
+  if (ks.premiumCalculation) w('F208', ks.premiumCalculation,  'Premium Calculation')
+  if (vintage)               w('F209', vintage,                'Estimated Vintage')
+  if (pi.totalUnits) {
+    // F211: ControlBackEnd category string for DSC VLOOKUP (raw integer would break VLOOKUP)
+    w('F211', unitCountCategory(pi.totalUnits), 'Number of Units (F211 — category)')
+  }
+  if (ks.numberOfAdvances)   w('F212', ks.numberOfAdvances,    'Number of Advances')
+
+  if (ks.ltv != null && ks.ltv !== '') {
+    const ltv = parseFloat(ks.ltv)
+    if (!isNaN(ltv)) w('F213', ltv > 1 ? ltv / 100 : ltv, 'LTV Limit')
+  }
+
+  if (pi.totalAppliances && pi.totalUnits && pi.totalUnits > 0) {
+    w('F214', Math.round(pi.totalAppliances / pi.totalUnits), 'Appliances Per Unit')
+  }
+
+  if (ks.heatPumps != null && ks.heatPumps !== '')               w('F215', Number(ks.heatPumps),          'Heat Pumps & AC')
+  if (ks.elevators != null && ks.elevators !== '')                w('F216', Number(ks.elevators),           'Elevators')
+  if (ks.affordabilityPts != null && ks.affordabilityPts !== '')  w('F217', Number(ks.affordabilityPts),   'Affordability Points')
+  if (ks.energyEfficiencyPts != null && ks.energyEfficiencyPts !== '') w('F218', Number(ks.energyEfficiencyPts), 'Energy Efficiency Pts')
+  if (ks.accessibilityPts != null && ks.accessibilityPts !== '')  w('F219', Number(ks.accessibilityPts),   'Accessibility Points')
+
+  // F220 is a formula (=+H118 from Budget sheet) — cannot be overwritten directly.
+  // For acquisitions: write purchase price to Budget!K9 (Land Value), which flows through
+  // H112 → H118 → F220, giving a correct cost basis for LTC calculations.
+  const devCost = (ks.totalDevCost != null && ks.totalDevCost !== '')
+    ? Number(ks.totalDevCost)
+    : (() => {
+        const pp = data.analysis?.purchasePrice
+        if (!pp) return null
+        const n = parseFloat(String(pp).replace(/[^0-9.]/g, ''))
+        return n > 0 ? n : null
+      })()
+  if (devCost != null) {
+    const budgetSheet = workbook.getWorksheet('Budget')
+    if (budgetSheet) {
+      const k9 = budgetSheet.getCell('K9')
+      if (k9.type !== ExcelJS.ValueType.Formula && !k9.formula) {
+        k9.value = devCost
+        written++
+        log.push(`  Budget!K9: Purchase Price / Dev Cost = ${devCost}`)
+      } else {
+        log.push(`  Budget!K9: SKIPPED (formula cell) — Dev Cost`)
+      }
+    }
+    // Also attempt F220 in case this template has it as an input cell
+    w('F220', devCost, 'Total Dev Cost (F220 fallback)')
+  }
+
+  // Cap rate → G34; guard against zero (would cause H34 = NOI/0 = #DIV/0!)
+  if (ks.capRate != null && ks.capRate !== '') {
+    const capVal = parseFloat(ks.capRate)
+    if (!isNaN(capVal) && capVal > 0) w('G34', capVal > 1 ? capVal / 100 : capVal, 'Cap Rate (G34)')
+  }
+
+  return { written, log }
 }
 
-export async function populateExcelTemplate(buffer, noiData) {
+// ─── Public API ───────────────────────────────────────────────────────────────
+export async function populateExcelTemplate(buffer, data) {
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(buffer)
 
-  console.log('Building cell map (blue-font input cells only)...')
-  const cellMap = buildCellMap(workbook)
-  console.log(`Cell map built (${cellMap.length} chars, ${cellMap.split('\n').length} lines)`)
+  console.log(`Template has ${workbook.worksheets.length} sheets`)
 
-  if (!cellMap.trim()) {
-    throw new Error('No blue-font input cells found in this template. Make sure you are uploading the correct CMHC Excel file.')
+  // ExcelJS 4.4.0 bug: CF rules are loaded with formula=undefined and crash writeBuffer.
+  // CF rules are visual-only and not needed in the populated output.
+  for (const ws of workbook.worksheets) {
+    // @ts-ignore — conditionalFormattings exists at runtime despite incomplete type def
+    ws.conditionalFormattings = []
   }
 
-  console.log('Asking Claude for cell mappings...')
-  const result = await getExcelMappings(cellMap, noiData)
-  const mappings = result?.mappings ?? []
-  const unmappedFields = result?.unmappedFields ?? []
-  console.log(`Claude returned ${mappings.length} mappings, ${unmappedFields.length} unmapped fields`)
-  if (unmappedFields.length) console.log('Unmapped fields:', unmappedFields)
+  const rrResult   = writeRentRoll(workbook, data.unitDetails, data.unitBreakdown)
+  const econResult = writeEconomics(workbook, data)
 
-  const { applied, lowConfidence } = applyMappings(workbook, mappings)
+  console.log('\n── Rent Roll ──')
+  rrResult.log.forEach(l => console.log(l))
+  console.log(`Written: ${rrResult.written} unit rows`)
+
+  console.log('\n── Economics ──')
+  econResult.log.forEach(l => console.log(l))
+  console.log(`Written: ${econResult.written} cells`)
+
+  // Build missing-fields report
+  const missingFields = []
+  const opex = data.operatingExpenses ?? {}
+  if (!opex.propertyTaxes?.annualAmount && !data.expenses?.propertyTaxes)
+    missingFields.push('Property Taxes')
+  if (!opex.insurance?.annualAmount && !data.expenses?.insurance)
+    missingFields.push('Insurance')
+  if (!opex.utilities?.annualAmount && !data.expenses?.utilities)
+    missingFields.push('Utilities')
+  if (!data.unitDetails?.length && !data.unitBreakdown?.length)
+    missingFields.push('Unit data (Rent Roll)')
+  if (!data.propertyInfo?.region)
+    missingFields.push('Region (Economics F201)')
+  if (!data.propertyInfo?.housingType)
+    missingFields.push('Housing Type (Economics F203)')
+  if (missingFields.length) console.log('\nMissing fields:', missingFields)
 
   const outBuffer = await workbook.xlsx.writeBuffer()
   return {
     buffer: Buffer.from(outBuffer),
     report: {
-      applied: applied.length,
-      lowConfidenceSkipped: lowConfidence.length,
-      unmappedFields,
+      rentRollRows:    rrResult.written,
+      economicsCells:  econResult.written,
+      totalWritten:    rrResult.written + econResult.written,
+      missingFields,
     },
   }
 }
