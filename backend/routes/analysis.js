@@ -64,6 +64,7 @@ router.post('/research', async (req, res) => {
 
 router.post('/populate-excel', async (req, res) => {
   try {
+    await runUpload(req, res, upload.none())
     let noiData = {}
     try { noiData = JSON.parse(req.body.noiData || '{}') } catch {}
 
