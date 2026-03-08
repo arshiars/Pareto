@@ -278,9 +278,9 @@ export default function ReviewPage() {
             label="Cap Rate"
             suffix="%"
             type="number"
-            value={(defaults.capRate * 100).toFixed(2)}
-            onChange={(e) => setDefault('capRate', Number(e.target.value) / 100)}
-            placeholder="5.00"
+            value={defaults.capRate != null ? (defaults.capRate * 100).toFixed(2) : ''}
+            onChange={(e) => setDefault('capRate', e.target.value ? Number(e.target.value) / 100 : null)}
+            placeholder="Enter cap rate"
           />
         </div>
       </div>

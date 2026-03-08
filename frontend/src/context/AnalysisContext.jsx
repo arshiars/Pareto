@@ -13,7 +13,7 @@ const initialState = {
     managementFeeRate: 0.0425,
     otherDeductionsRate: 0.01,
     replacementReservePerAppliance: 180,
-    capRate: 0.05,
+    capRate: null,
   },
   error: null,
 }
@@ -26,13 +26,15 @@ function reducer(state, action) {
       return { ...state, step: action.step }
     case 'SET_EXTRACTED': {
       const extractedVacancy = action.data?.propertyInfo?.vacancyRate
+      const extractedCapRate = action.data?.analysis?.capRate
+      const newDefaults = { ...state.defaults }
+      if (extractedVacancy != null) newDefaults.vacancyRate = extractedVacancy
+      if (extractedCapRate != null) newDefaults.capRate = extractedCapRate
       return {
         ...state,
         extractedData: action.data,
         step: 'review',
-        defaults: extractedVacancy != null
-          ? { ...state.defaults, vacancyRate: extractedVacancy }
-          : state.defaults,
+        defaults: newDefaults,
         error: null,
       }
     }

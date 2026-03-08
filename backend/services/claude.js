@@ -116,6 +116,7 @@ function mergeOperatingExpenses(expenses) {
 function mergeAnalysis(analyses) {
   return {
     purchasePrice: analyses.map((a) => a?.purchasePrice).find(Boolean) ?? null,
+    capRate: analyses.map((a) => a?.capRate).find((v) => v != null) ?? null,
     keyInfo: [...new Set(analyses.flatMap((a) => a?.keyInfo ?? []))],
     risks: [...new Set(analyses.flatMap((a) => a?.risks ?? []))],
   }

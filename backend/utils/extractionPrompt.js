@@ -68,6 +68,7 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) matching thi
   },
   "analysis": {
     "purchasePrice": string | null,
+    "capRate": number | null,
     "keyInfo": [string],
     "risks": [string]
   }
@@ -109,6 +110,7 @@ Operating expenses:
 - For insurance: use the total premium including all taxes and fees
 
 analysis.purchasePrice: formatted string if found (e.g. "$2,500,000"), else null
+analysis.capRate: cap rate as a decimal if found in documents (e.g. 0.05 for 5%), else null — look for "cap rate", "capitalization rate", or "going-in cap"
 analysis.keyInfo: 3–6 concise bullet strings about the property
 analysis.risks: 2–5 concise bullet strings identifying underwriting risks; empty array if none found`
 }
