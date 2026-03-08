@@ -15,6 +15,10 @@ const UNIT_CODES = {
   '2 bedrooms':  2, '2br': 2, '2-bedroom': 2,
   '3 bedrooms':  3, '3br': 3, '3-bedroom': 3,
   '4+ bedrooms': 4, '4br': 4, '4+ bedroom': 4, '4-bedroom': 4,
+  'single room occupancy (nhcf)': 5, 'sro (nhcf)': 5,
+  'semi-private & ward beds':     6,
+  'private beds':                 7,
+  'shelter beds (nhcf)':          8,
 }
 
 function unitCode(unitType) {
@@ -261,7 +265,7 @@ function writeEconomics(workbook, data) {
   if (ks.egiTestMet)         w('F205', ks.egiTestMet,          'EGI Test Met')
   if (frame)                 w('F206', frame,                  'Frame Construction')
   if (ks.projectStatus)      w('F207', ks.projectStatus,       'Project Status')
-  if (ks.premiumCalculation) w('F208', ks.premiumCalculation,  'Premium Calculation')
+  if (ks.premiumUsed)        w('F208', ks.premiumUsed,         'Premium Used')
   if (vintage)               w('F209', vintage,                'Estimated Vintage')
   if (pi.totalUnits) {
     // F211: ControlBackEnd category string for DSC VLOOKUP (raw integer would break VLOOKUP)

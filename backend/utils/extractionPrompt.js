@@ -20,7 +20,7 @@ Return ONLY a valid JSON object (no markdown fences, no commentary) matching thi
   "unitDetails": [
     {
       "unitNumber": string | null,
-      "unitType": "Bachelor" | "1 Bedroom" | "2 Bedrooms" | "3 Bedrooms" | "4+ Bedrooms",
+      "unitType": "Bachelor" | "1 Bedroom" | "2 Bedrooms" | "3 Bedrooms" | "4+ Bedrooms" | "Single Room Occupancy (NHCF)" | "Semi-Private & Ward Beds" | "Private Beds" | "Shelter Beds (NHCF)",
       "monthlyRent": number | null,
       "sqft": number | null,
       "vacant": boolean,
@@ -81,7 +81,7 @@ Rules:
 
 unitDetails rules:
 - Extract EVERY individual unit from the rent roll — one object per unit
-- unitType must be exactly one of the five allowed strings; map "1BR"→"1 Bedroom", "2BR"→"2 Bedrooms", "3BR"→"3 Bedrooms", "Studio"→"Bachelor", "4BR"/"4+"→"4+ Bedrooms"
+- unitType must be exactly one of the nine allowed strings; map "1BR"→"1 Bedroom", "2BR"→"2 Bedrooms", "3BR"→"3 Bedrooms", "Studio"→"Bachelor", "4BR"/"4+"→"4+ Bedrooms", "SRO"→"Single Room Occupancy (NHCF)", ward/semi-private beds→"Semi-Private & Ward Beds", private beds→"Private Beds", shelter beds→"Shelter Beds (NHCF)"
 - vacant: true if unit is marked vacant/empty, false if occupied
 - marketUnit: false if the unit is affordable / subsidized / below-market-rent; true for all regular market-rate units; default true when not indicated
 - If documents list only a summary (no individual units), return []
