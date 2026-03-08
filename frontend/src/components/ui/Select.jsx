@@ -5,13 +5,14 @@ export default function Select({
   options = [],
   placeholder = 'Select…',
   className = '',
+  error = false,
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       {label && (
         <label className="text-xs font-medium text-gray-600">{label}</label>
       )}
-      <div className="flex items-center border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all">
+      <div className={`flex items-center border rounded-lg overflow-hidden focus-within:ring-2 transition-all ${error ? 'border-red-400 focus-within:ring-red-200 focus-within:border-red-400' : 'border-border focus-within:ring-primary/30 focus-within:border-primary'}`}>
         <select
           value={value}
           onChange={onChange}
