@@ -1,7 +1,7 @@
 services:
   # ── Backend ──────────────────────────────────────────────────────────────────
   - type: web
-    name: tamberg-backend
+    name: fundus-backend
     runtime: node
     rootDir: backend
     buildCommand: npm install
@@ -16,7 +16,7 @@ services:
 
   # ── Frontend ─────────────────────────────────────────────────────────────────
   - type: web
-    name: tamberg-frontend
+    name: fundus-frontend
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
