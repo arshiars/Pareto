@@ -8,7 +8,7 @@ function getClient() {
   return new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
     maxRetries: 3,
-    defaultHeaders: { 'anthropic-beta': 'pdfs-2024-09-25' },
+    defaultHeaders: { 'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31' },
   })
 }
 
@@ -146,11 +146,16 @@ export async function extractFromDocuments(files, labels = []) {
     if (label) {
       contentBlocks.unshift({ type: 'text', text: `Document type: "${label}". Use this context to focus your extraction accordingly.` })
     }
-    contentBlocks.push({ type: 'text', text: buildExtractionPrompt() })
-
     const response = await getClient().messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
+      system: [
+        {
+          type: 'text',
+          text: buildExtractionPrompt(),
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages: [{ role: 'user', content: contentBlocks }],
     })
 
@@ -167,7 +172,7 @@ export async function extractField(file, fieldDescription) {
   contentBlocks.push({ type: 'text', text: buildFieldExtractionPrompt(fieldDescription) })
 
   const response = await getClient().messages.create({
-    model: 'claude-opus-4-6',
+    model: 'claude-sonnet-4-6',
     max_tokens: 512,
     messages: [{ role: 'user', content: contentBlocks }],
   })
@@ -178,7 +183,7 @@ export async function extractField(file, fieldDescription) {
 
 export async function researchField(fieldName, propertyContext) {
   const response = await getClient().messages.create({
-    model: 'claude-opus-4-6',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 1024,
     messages: [{ role: 'user', content: buildResearchPrompt(fieldName, propertyContext) }],
   })
