@@ -82,8 +82,8 @@ export default function UploadPage() {
           <div>
             <h2 className="text-2xl font-bold text-primary">Upload Property Documents</h2>
             <p className="text-gray-500 mt-1">
-              Upload rent rolls, T6010s, operating statements, and other relevant documents.
-              Claude will extract all financial data automatically.
+              Upload broker CIM, rent rolls, operating statements, and other relevant documents.
+              Fundus will extract all financial data automatically.
             </p>
           </div>
 

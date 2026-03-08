@@ -151,6 +151,15 @@ function SpreadsheetIcon() {
   )
 }
 
+function PresentationIcon() {
+  return (
+    <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+    </svg>
+  )
+}
+
 export default function ExcelPage() {
   const { state, goToReview, setDefault } = useAnalysis()
   const { extractedData, userOverrides, defaults } = state
@@ -306,13 +315,6 @@ export default function ExcelPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="accent" onClick={() => setShowPptModal(true)}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-            </svg>
-            PowerPoint Suggestions
-          </Button>
           <Button variant="secondary" onClick={goToReview}>
             ← Back to Review
           </Button>
@@ -324,10 +326,9 @@ export default function ExcelPage() {
           <Card className="p-5">
             <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">How It Works</h3>
             <ol className="space-y-2 text-sm text-gray-600">
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Your NOI data — extracted from documents in step 1 and reviewed in step 2 — is finalized and ready to write.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> Review KS Database Inputs and Financing Parameters below, then click <strong>Populate Template</strong>.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> The tool writes values directly to the mapped input cells: income, expenses, unit breakdown, and KS database fields.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">4.</span> Formula cells are <strong>never touched</strong> — they auto-calculate from the populated inputs.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Fill in the Financing Parameters and KS Database Inputs below.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> Click <strong>Populate Template</strong> to generate your Economics spreadsheet.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> Click <strong>Generate Suggestions</strong> to get AI-written content for your PowerPoint slides.</li>
             </ol>
           </Card>
 
@@ -529,7 +530,7 @@ export default function ExcelPage() {
                 {canPopulate && status === 'done' && (
                   <p className="text-xs text-gray-400">Changed a value above? Re-populate to update the file.</p>
                 )}
-                <Button variant="primary" size="lg" onClick={handlePopulate} disabled={!canPopulate} className="!bg-[#217346] !border-[#217346] !text-white hover:!opacity-90">
+                <Button variant="primary" size="lg" onClick={handlePopulate} disabled={!canPopulate} className="!bg-[#217346] !border-[#217346] !text-white hover:!opacity-90 !ring-2 !ring-amber-400 min-w-[220px]">
                   {status === 'done' ? 'Re-populate' : 'Populate Template'}
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -537,6 +538,28 @@ export default function ExcelPage() {
                 </Button>
               </div>
             )}
+          </Card>
+
+          {/* PowerPoint Suggestions */}
+          <Card className="p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <PresentationIcon />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-primary">PowerPoint Suggestions</h3>
+                <p className="text-xs text-gray-400 mt-0.5">AI-generated content for your PowerPoint slides.</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button variant="primary" size="lg" onClick={() => setShowPptModal(true)} className="!bg-[#D24726] !border-[#D24726] !text-white hover:!opacity-90 !ring-2 !ring-amber-400 min-w-[220px]">
+                Generate Suggestions
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </Button>
+            </div>
           </Card>
         </div>
 

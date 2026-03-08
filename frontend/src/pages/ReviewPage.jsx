@@ -296,7 +296,7 @@ export default function ReviewPage() {
                   <p className="text-white/60 text-sm mt-0.5">{propertyInfo?.address || 'Property Address Not Specified'}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-white/60 text-xs">Prepared by Windsor</p>
+                  <p className="text-white/60 text-xs">Prepared by Fundus</p>
                   <p className="text-white/60 text-xs">{today}</p>
                   {propertyInfo?.totalUnits && <p className="text-accent text-sm font-semibold mt-1">{propertyInfo.totalUnits} Units</p>}
                 </div>
@@ -425,7 +425,7 @@ export default function ReviewPage() {
             {/* Footer */}
             <div className="px-6 py-4 bg-background border-t border-border flex justify-between items-center">
               <p className="text-xs text-gray-400">For CMHC underwriting purposes only. Verify all values independently.</p>
-              <p className="text-xs text-gray-400">Windsor Underwriting Tool</p>
+              <p className="text-xs text-gray-400">Fundus Underwriting Tool</p>
             </div>
           </div>
 
