@@ -11,7 +11,7 @@ import Select from '../components/ui/Select.jsx'
 import Input from '../components/ui/Input.jsx'
 
 const KS_OPTIONS = {
-  loanType:           ['Term', 'Construction'],
+  loanType:           ['All Other Loan Purposes', 'Construction Financing'],
   region:             ['ON', 'BC', 'QC', 'Atlantic', 'Prairies & Territories'],
   propertyType:       ['Residential', 'Mixed-Use'],
   housingType:        ['Standard Rental Housing', 'Student', 'SRO', 'Retirement'],
@@ -35,6 +35,8 @@ const KS_OPTIONS = {
   ],
   numberOfAdvances: ['Two or less', 'More than two'],
   vintage: ['Pre 60s', '60s', '70s', '80s', '90s', '2000s', '2010s', '2020+'],
+  term:             ['5 yr', '10 yr'],
+  premiumUsed:      ['Pre-July 14, 2025', 'Effective July 14, 2025'],
 }
 
 const KS_FIELDS = [
@@ -52,6 +54,8 @@ const KS_FIELDS = [
   { key: 'utilitiesType',      label: 'Utilities' },
   { key: 'numberOfAdvances',   label: 'Number of Advances' },
   { key: 'vintage',            label: 'Estimated Vintage' },
+  { key: 'term',               label: 'Term' },
+  { key: 'premiumUsed',        label: 'Premium Used' },
 ]
 
 // ── KS input guessing helpers ─────────────────────────────────────────────────
@@ -185,8 +189,9 @@ export default function ExcelPage() {
       energyEfficiencyPts:'',
       accessibilityPts:   '',
       totalDevCost:       '',
+      premiumUsed:        '',
       // Financing parameters (cells TBD)
-      term:               '5',
+      term:               '5 yr',
       amortization:       '35',
       lenderFee:          '0',
       cmhcMaxRate:        '4.5',
@@ -425,14 +430,6 @@ export default function ExcelPage() {
               <p className="text-xs text-gray-400 mt-0.5">Mortgage terms used in the Economics sheet.</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Term"
-                suffix="yrs"
-                type="number"
-                value={ksInputs.term}
-                onChange={(e) => setKsField('term', e.target.value)}
-                placeholder="5"
-              />
               <Input
                 label="Amortization"
                 suffix="yrs"

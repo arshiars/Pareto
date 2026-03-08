@@ -15,6 +15,10 @@ const UNIT_CODES = {
   '2 bedrooms':  2, '2br': 2, '2-bedroom': 2,
   '3 bedrooms':  3, '3br': 3, '3-bedroom': 3,
   '4+ bedrooms': 4, '4br': 4, '4+ bedroom': 4, '4-bedroom': 4,
+  'single room occupancy (nhcf)': 5, 'sro (nhcf)': 5,
+  'semi-private & ward beds':     6,
+  'private beds':                 7,
+  'shelter beds (nhcf)':          8,
 }
 
 function unitCode(unitType) {
@@ -154,6 +158,10 @@ function writeEconomics(workbook, data) {
     written += n
     log.push(`  ${addrs.join('/')}: ${label} = ${value}`)
   }
+  function wSource(row, text) {
+    if (!text) return
+    writeCell(sheet, `L${row}`, text)
+  }
 
   // ── Parking ──────────────────────────────────────────────────────────────────
   // E16-E18 = occupancy efficiency = 90% (only when parking/storage data is present)
@@ -164,10 +172,12 @@ function writeEconomics(workbook, data) {
     if (pk.ugStallsTotal != null) {
       w('F16', pk.ugStallsTotal, 'UG Parking total stalls')
       w('G16', pk.ugMonthlyRate, 'UG Parking $/stall/mo')
+      wSource(16, pk.source)
     }
     if (pk.exStallsTotal != null) {
       w('F17', pk.exStallsTotal, 'EX Parking total stalls')
       w('G17', pk.exMonthlyRate, 'EX Parking $/stall/mo')
+      wSource(17, pk.source)
     }
   }
 
@@ -177,6 +187,7 @@ function writeEconomics(workbook, data) {
     w('E18', 0.9, 'Storage efficiency')
     w('F18', st.unitsTotal,  'Storage total units')
     w('G18', st.monthlyRate, 'Storage $/unit/mo')
+    wSource(18, st.source)
   }
 
   // ── H19: Other income (annual) ────────────────────────────────────────────────
@@ -188,14 +199,23 @@ function writeEconomics(workbook, data) {
   const stFallback    = (st?.found && st.unitsTotal == null)
     ? (st.monthlyTotal ?? 0) * 12 : 0
   const h19Total      = laundryAnnual + otherAnnual + pkFallback + stFallback
-  if (h19Total > 0) w('H19', h19Total, 'Other income (annual, H19)')
+  if (h19Total > 0) {
+    w('H19', h19Total, 'Other income (annual, H19)')
+    const h19Sources = [
+      laundryAnnual > 0 && data.additionalIncome?.laundry?.source,
+      otherAnnual   > 0 && data.additionalIncome?.other?.source,
+      pkFallback    > 0 && pk?.source,
+      stFallback    > 0 && st?.source,
+    ].filter(Boolean)
+    wSource(19, h19Sources.join('; ') || 'Extracted from documents')
+  }
 
   // ── Vacancy rate ──────────────────────────────────────────────────────────────
   // Read from income (frontend defaults), fall back to extracted propertyInfo
   const vacancy = data.income?.vacancyRate ?? data.propertyInfo?.vacancyRate ?? null
   if (vacancy != null) {
     w('G22', vacancy, 'Vacancy Rate (G22)')
-    // AJ18 is market-level vacancy (5-yr average zone), not subject property — do not conflate
+    wSource(22, data.income?.vacancyRate != null ? 'User assumption' : 'Extracted from documents')
   }
 
   // ── Expenses (4 columns each) ─────────────────────────────────────────────────
@@ -206,9 +226,18 @@ function writeEconomics(workbook, data) {
   const ins   = opex.insurance?.annualAmount     ?? data.expenses?.insurance      ?? null
   const util  = opex.utilities?.annualAmount     ?? data.expenses?.utilities      ?? null
 
-  if (taxes != null) wMany(['AJ24', 'AK24', 'AL24', 'AM24'], taxes, 'Property Taxes')
-  if (ins   != null) wMany(['AJ25', 'AK25', 'AL25', 'AM25'], ins,   'Insurance')
-  if (util  != null) wMany(['AK26', 'AL26', 'AM26'],         util,  'Utilities')
+  if (taxes != null) {
+    wMany(['AJ24', 'AK24', 'AL24', 'AM24'], taxes, 'Property Taxes')
+    wSource(24, opex.propertyTaxes?.source || 'Calculated from extracted data')
+  }
+  if (ins != null) {
+    wMany(['AJ25', 'AK25', 'AL25', 'AM25'], ins, 'Insurance')
+    wSource(25, opex.insurance?.source || 'Calculated from extracted data')
+  }
+  if (util != null) {
+    wMany(['AK26', 'AL26', 'AM26'], util, 'Utilities')
+    wSource(26, opex.utilities?.source || 'Calculated from extracted data')
+  }
 
   // R&M (row 27) and Payroll (row 28) are fully benchmark-driven in this template.
   // H27 = I27*$F$15 where I27 = X27*(1+$AK$30). No manual input columns exist.
@@ -236,15 +265,32 @@ function writeEconomics(workbook, data) {
   // I71 = Max Rate per COI — used in all DSC stress tests and buydown calc
   if (ks.term != null && ks.term !== '') {
     const termVal = parseInt(ks.term)
-    if (!isNaN(termVal)) w('I68', termVal, 'CMHC Term (I68)')
+    if (!isNaN(termVal)) {
+      w('I68', termVal, 'CMHC Term (I68)')
+      wSource(68, termVal === 5 ? 'Default assumption (5 yr)' : 'User selected')
+    }
   }
   if (ks.amortization != null && ks.amortization !== '') {
     const amortVal = parseInt(ks.amortization)
-    if (!isNaN(amortVal) && amortVal > 0) w('I69', amortVal, 'Amortization (I69)')
+    if (!isNaN(amortVal) && amortVal > 0) {
+      w('I69', amortVal, 'Amortization (I69)')
+      wSource(69, amortVal === 35 ? 'Default assumption (35 yrs)' : 'User input')
+    }
   }
   if (ks.cmhcMaxRate != null && ks.cmhcMaxRate !== '') {
     const maxRateVal = parseFloat(ks.cmhcMaxRate)
-    if (!isNaN(maxRateVal) && maxRateVal > 0) w('I71', maxRateVal > 1 ? maxRateVal / 100 : maxRateVal, 'CMHC Max Rate (I71)')
+    if (!isNaN(maxRateVal) && maxRateVal > 0) {
+      const rateWritten = maxRateVal > 1 ? maxRateVal / 100 : maxRateVal
+      w('I71', rateWritten, 'CMHC Max Rate (I71)')
+      wSource(71, maxRateVal === 4.5 || maxRateVal === 0.045 ? 'Default assumption (4.5%)' : 'User input')
+    }
+  }
+  if (ks.lenderFee != null && ks.lenderFee !== '') {
+    const feeVal = parseFloat(ks.lenderFee)
+    if (!isNaN(feeVal) && feeVal >= 0) {
+      w('I66', feeVal > 1 ? feeVal / 100 : feeVal, 'Lender Fee (I66)')
+      wSource(66, feeVal === 0 ? 'Default assumption (0%)' : 'User input')
+    }
   }
   if (ks.lenderFee != null && ks.lenderFee !== '') {
     const feeVal = parseFloat(ks.lenderFee)
@@ -253,21 +299,21 @@ function writeEconomics(workbook, data) {
 
   // ── KS underwriting inputs (F200–F220) ───────────────────────────────────────
   // Only F column matters — D200-D220 are cosmetic display cells with no formula references.
-  if (ks.loanType)           w('F200', ks.loanType,           'Loan Type')
-  if (region)                w('F201', region,                 'Region')
-  if (propType)              w('F202', propType,               'Property Type')
-  if (housing)               w('F203', housing,                'Housing Type')
-  if (ks.program)            w('F204', ks.program,             'Program')
-  if (ks.egiTestMet)         w('F205', ks.egiTestMet,          'EGI Test Met')
-  if (frame)                 w('F206', frame,                  'Frame Construction')
-  if (ks.projectStatus)      w('F207', ks.projectStatus,       'Project Status')
-  if (ks.premiumCalculation) w('F208', ks.premiumCalculation,  'Premium Calculation')
-  if (vintage)               w('F209', vintage,                'Estimated Vintage')
+  if (ks.loanType)           { w('F200', ks.loanType,           'Loan Type');          wSource(200, 'User selected') }
+  if (region)                { w('F201', region,                 'Region');             wSource(201, pi.region ? 'Extracted from documents' : 'User selected') }
+  if (propType)              { w('F202', propType,               'Property Type');      wSource(202, pi.propertyType ? 'Extracted from documents' : 'User selected') }
+  if (housing)               { w('F203', housing,                'Housing Type');       wSource(203, pi.housingType ? 'Extracted from documents' : 'User selected') }
+  if (ks.program)            { w('F204', ks.program,             'Program');            wSource(204, 'User selected') }
+  if (ks.egiTestMet)         { w('F205', ks.egiTestMet,          'EGI Test Met');      wSource(205, 'User selected') }
+  if (frame)                 { w('F206', frame,                  'Frame Construction'); wSource(206, pi.frameConstruction ? 'Extracted from documents' : 'User selected') }
+  if (ks.projectStatus)      { w('F207', ks.projectStatus,       'Project Status');    wSource(207, pi.vintage ? 'Inferred from vintage' : 'User selected') }
+  if (ks.premiumUsed)        { w('F208', ks.premiumUsed,         'Premium Used');      wSource(208, 'User selected') }
+  if (vintage)               { w('F209', vintage,                'Estimated Vintage'); wSource(209, pi.vintage ? 'Extracted from documents' : 'User selected') }
   if (pi.totalUnits) {
-    // F211: ControlBackEnd category string for DSC VLOOKUP (raw integer would break VLOOKUP)
     w('F211', unitCountCategory(pi.totalUnits), 'Number of Units (F211 — category)')
+    wSource(211, 'Derived from total unit count')
   }
-  if (ks.numberOfAdvances)   w('F212', ks.numberOfAdvances,    'Number of Advances')
+  if (ks.numberOfAdvances)   { w('F212', ks.numberOfAdvances,    'Number of Advances'); wSource(212, 'User selected') }
 
   if (ks.ltv != null && ks.ltv !== '') {
     const ltv = parseFloat(ks.ltv)
@@ -314,7 +360,10 @@ function writeEconomics(workbook, data) {
   // Cap rate → G34; guard against zero (would cause H34 = NOI/0 = #DIV/0!)
   if (ks.capRate != null && ks.capRate !== '') {
     const capVal = parseFloat(ks.capRate)
-    if (!isNaN(capVal) && capVal > 0) w('G34', capVal > 1 ? capVal / 100 : capVal, 'Cap Rate (G34)')
+    if (!isNaN(capVal) && capVal > 0) {
+      w('G34', capVal > 1 ? capVal / 100 : capVal, 'Cap Rate (G34)')
+      wSource(34, data.analysis?.purchasePrice ? 'Derived from NOI / purchase price' : 'User input')
+    }
   }
 
   return { written, log }
