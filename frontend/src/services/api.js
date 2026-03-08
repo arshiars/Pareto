@@ -76,6 +76,17 @@ export async function populateExcel(noiData) {
   return { buffer, report }
 }
 
+export async function fetchPptSuggestions(extractedData) {
+  const res = await fetch(`${BASE_URL}/analysis/ppt-suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ extractedData }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
 export async function researchField(fieldName, propertyContext) {
   const res = await fetch(`${BASE_URL}/analysis/research`, {
     method: 'POST',

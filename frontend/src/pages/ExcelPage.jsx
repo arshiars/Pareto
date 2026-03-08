@@ -4,6 +4,7 @@ import { calculateNOI } from '../utils/calculations.js'
 import { formatCurrency, formatPercent } from '../utils/formatters.js'
 import { populateExcel } from '../services/api.js'
 import StepIndicator from '../components/StepIndicator.jsx'
+import PptSuggestionsModal from '../components/PptSuggestionsModal.jsx'
 import Card from '../components/ui/Card.jsx'
 import Button from '../components/ui/Button.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
@@ -154,6 +155,8 @@ export default function ExcelPage() {
   const { state, goToReview, setDefault } = useAnalysis()
   const { extractedData, userOverrides, defaults } = state
 
+  const [showPptModal, setShowPptModal] = useState(false)
+  const [pptCache, setPptCache]     = useState(null)
   const [status, setStatus]         = useState('idle') // idle | loading | done | error
   const [errorMsg, setErrorMsg]     = useState(null)
   const [downloadUrl, setDownloadUrl] = useState(null)
@@ -292,9 +295,18 @@ export default function ExcelPage() {
             Review your inputs, then generate a populated CMHC Economics template ready to submit.
           </p>
         </div>
-        <Button variant="secondary" onClick={goToReview}>
-          ← Back to Review
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="accent" onClick={() => setShowPptModal(true)}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+            </svg>
+            PowerPoint Suggestions
+          </Button>
+          <Button variant="secondary" onClick={goToReview}>
+            ← Back to Review
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
@@ -546,6 +558,15 @@ export default function ExcelPage() {
             </ol>
           </Card>
         </div>
+
+        {showPptModal && (
+          <PptSuggestionsModal
+            extractedData={extractedData}
+            cachedData={pptCache}
+            onDataLoaded={setPptCache}
+            onClose={() => setShowPptModal(false)}
+          />
+        )}
 
         {/* Right: data summary */}
         <div className="space-y-4">
