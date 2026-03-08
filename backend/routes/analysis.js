@@ -3,7 +3,7 @@ import { readFile } from 'fs/promises'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { upload } from '../middleware/upload.js'
-import { extractFromDocuments, extractField, researchField } from '../services/claude.js'
+import { extractFromDocuments, extractField, researchField, generatePptSuggestions } from '../services/claude.js'
 import { populateExcelTemplate } from '../services/excel.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -59,6 +59,19 @@ router.post('/research', async (req, res) => {
   } catch (err) {
     console.error('Research error:', err.message)
     res.status(500).json({ error: err.message || 'Research failed' })
+  }
+})
+
+router.post('/ppt-suggestions', async (req, res) => {
+  try {
+    const { extractedData } = req.body
+    if (!extractedData) return res.status(400).json({ error: 'extractedData is required' })
+    console.log('Generating PowerPoint suggestions')
+    const suggestions = await generatePptSuggestions(extractedData)
+    res.json(suggestions)
+  } catch (err) {
+    console.error('PPT suggestions error:', err.message)
+    res.status(500).json({ error: err.message || 'PPT suggestions failed' })
   }
 })
 

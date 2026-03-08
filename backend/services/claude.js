@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PDFDocument } from 'pdf-lib'
-import { buildExtractionPrompt, buildResearchPrompt, buildFieldExtractionPrompt } from '../utils/extractionPrompt.js'
+import { buildExtractionPrompt, buildResearchPrompt, buildFieldExtractionPrompt, buildPptSuggestionsPrompt } from '../utils/extractionPrompt.js'
 
 const MAX_PDF_PAGES = 100
 
@@ -170,6 +170,17 @@ export async function extractField(file, fieldDescription) {
     model: 'claude-opus-4-6',
     max_tokens: 512,
     messages: [{ role: 'user', content: contentBlocks }],
+  })
+
+  if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
+  return safeParseJson(response.content[0].text)
+}
+
+export async function generatePptSuggestions(extractedData) {
+  const response = await getClient().messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 4096,
+    messages: [{ role: 'user', content: buildPptSuggestionsPrompt(extractedData) }],
   })
 
   if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')

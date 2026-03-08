@@ -133,6 +133,62 @@ Return ONLY a valid JSON object (no markdown fences):
 - source: "AI Estimate — Industry Standards" or similar`
 }
 
+export function buildPptSuggestionsPrompt(extractedData) {
+  return `You are a senior CMHC underwriting analyst at KingSett Capital preparing investment committee slide content.
+
+Extracted data:
+${JSON.stringify(extractedData, null, 2)}
+
+WRITING RULES — follow strictly:
+- Be concise. Every word must earn its place. No filler, no fluff.
+- Never repeat the same fact across sections. Each bullet adds NEW information.
+- Lead with numbers and specifics, not generic descriptions.
+- Write for a senior audience that already understands CMHC lending — skip obvious context.
+- If data is unavailable, write a short template marked [PLACEHOLDER]. Do not invent figures.
+
+Return ONLY valid JSON (no markdown fences, no commentary):
+
+{
+  "opportunity": { "bullets": [string, string, string] },
+  "propertyDescription": { "bullets": [string, string, string] },
+  "location": { "address": string, "googleMapsUrl": string },
+  "sponsorGuarantee": { "bullets": [string, string, string, string] },
+  "market": { "bullets": [{ "text": string, "subBullets": [string] | null }] },
+  "keyRisksAndMitigants": { "items": [{ "title": string, "description": string }] }
+}
+
+OPPORTUNITY (3 bullets):
+- Financing amount + program + term in one line (e.g. "$6.71M CMHC insured first mortgage (MLI Market – 5 Yr Term).")
+- Property snapshot: type, units, storeys — one sentence
+- Loan purpose + purchase price
+
+PROPERTY DESCRIPTION (3 bullets):
+- Building vintage + construction type + key physical facts
+- Recent capex or renovations (amounts + scope)
+- Amenities: parking, laundry, in-suite appliances — only what exists
+
+LOCATION:
+- address: full property address
+- googleMapsUrl: https://www.google.com/maps/search/?api=1&query={URL-encoded address}
+
+SPONSOR/GUARANTEE (4 bullets):
+- Recourse structure
+- Ownership breakdown
+- Net worth / financial capacity
+- Track record (years, portfolio size)
+- Mark with [PLACEHOLDER] if sponsor data is not available
+
+MARKET (2-3 bullets, sub-bullets where useful):
+- Market area and positioning
+- Rental market data: vacancy rate, avg rents by bedroom type — use extracted rents as KS UW delta comparison
+- Mark with [PLACEHOLDER] if market data is not available
+
+KEY RISKS & MITIGANTS (2-4 items):
+- Each: concise title + one-sentence risk-and-mitigant pair
+- Draw from analysis.risks; add building age or environmental if relevant
+- Do not restate facts already covered above — focus on the risk angle`
+}
+
 export function buildFieldExtractionPrompt(fieldDescription) {
   return `You are a meticulous CMHC underwriting analyst extracting a specific financial figure from a property document.
 
