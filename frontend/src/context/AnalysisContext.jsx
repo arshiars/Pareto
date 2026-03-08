@@ -4,7 +4,7 @@ import { extractDocuments, researchField } from '../services/api.js'
 const AnalysisContext = createContext(null)
 
 const initialState = {
-  step: 'upload', // upload | processing | review | excel
+  step: 'upload', // upload | processing | completing | review | excel
   files: [],
   extractedData: null,
   userOverrides: {},
@@ -13,6 +13,7 @@ const initialState = {
     managementFeeRate: 0.0425,
     otherDeductionsRate: 0.01,
     replacementReservePerAppliance: 180,
+    capRate: 0.05,
   },
   error: null,
 }
@@ -56,6 +57,9 @@ export function AnalysisProvider({ children }) {
     dispatch({ type: 'SET_STEP', step: 'processing' })
     try {
       const data = await extractDocuments(files, labels)
+      // Brief 'completing' pause so the stage animation can show all-done before transition
+      dispatch({ type: 'SET_STEP', step: 'completing' })
+      await new Promise((resolve) => setTimeout(resolve, 900))
       dispatch({ type: 'SET_EXTRACTED', data })
     } catch (err) {
       dispatch({ type: 'SET_ERROR', error: err.message })
