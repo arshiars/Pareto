@@ -210,17 +210,18 @@ function writeEconomics(workbook, data) {
   if (ins   != null) wMany(['AJ25', 'AK25', 'AL25', 'AM25'], ins,   'Insurance')
   if (util  != null) wMany(['AK26', 'AL26', 'AM26'],         util,  'Utilities')
 
-  // R&M and Payroll — write to source columns; writeCell guard skips any formula cells
-  const rm = opex.repairsAndMaintenance?.annualAmount ?? data.expenses?.repairsAndMaintenance ?? null
-  const pa = opex.payrollAndAdmin?.annualAmount       ?? data.expenses?.payrollAndAdmin       ?? null
-  if (rm != null) wMany(['AJ27', 'AK27', 'AL27', 'AM27'], rm, 'Repairs & Maintenance')
-  if (pa != null) wMany(['AJ28', 'AK28', 'AL28', 'AM28'], pa, 'Payroll & Admin')
+  // R&M (row 27) and Payroll (row 28) are fully benchmark-driven in this template.
+  // H27 = I27*$F$15 where I27 = X27*(1+$AK$30). No manual input columns exist.
+  // Writing extracted values here has no effect — leave blank so benchmarks apply.
 
   // ── KS underwriting inputs ────────────────────────────────────────────────────
   // ksInputs (user-selected dropdowns) take precedence; fall back to extracted propertyInfo.
   // All values normalized to exact ControlBackEnd strings before writing.
   const pi = data.propertyInfo ?? {}
   const ks = data.ksInputs ?? {}
+
+  // D26 = utilities type dropdown — drives the utilities benchmark lookup
+  if (ks.utilitiesType) w('D26', ks.utilitiesType, 'Utilities Type (D26)')
 
   // Normalize: user dropdown values already match ControlBackEnd; raw extracted values need mapping
   const region   = normalizeRegion(ks.region || pi.region)
@@ -244,6 +245,10 @@ function writeEconomics(workbook, data) {
   if (ks.cmhcMaxRate != null && ks.cmhcMaxRate !== '') {
     const maxRateVal = parseFloat(ks.cmhcMaxRate)
     if (!isNaN(maxRateVal) && maxRateVal > 0) w('I71', maxRateVal > 1 ? maxRateVal / 100 : maxRateVal, 'CMHC Max Rate (I71)')
+  }
+  if (ks.lenderFee != null && ks.lenderFee !== '') {
+    const feeVal = parseFloat(ks.lenderFee)
+    if (!isNaN(feeVal) && feeVal >= 0) w('I66', feeVal > 1 ? feeVal / 100 : feeVal, 'Lender Fee (I66)')
   }
 
   // ── KS underwriting inputs (F200–F220) ───────────────────────────────────────
