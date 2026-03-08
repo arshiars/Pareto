@@ -326,31 +326,46 @@ function writeEconomics(workbook, data) {
   if (ks.energyEfficiencyPts != null && ks.energyEfficiencyPts !== '') w('F218', Number(ks.energyEfficiencyPts), 'Energy Efficiency Pts')
   if (ks.accessibilityPts != null && ks.accessibilityPts !== '')  w('F219', Number(ks.accessibilityPts),   'Accessibility Points')
 
-  // F220 is a formula (=+H118 from Budget sheet) — cannot be overwritten directly.
-  // For acquisitions: write purchase price to Budget!K9 (Land Value), which flows through
-  // H112 → H118 → F220, giving a correct cost basis for LTC calculations.
-  const devCost = (ks.totalDevCost != null && ks.totalDevCost !== '')
-    ? Number(ks.totalDevCost)
+  // Purchase Price → Budget!K9 and Budget!D5
+  // ks.purchasePrice is the user-entered (or AI-extracted) acquisition price.
+  const purchasePrice = (ks.purchasePrice != null && ks.purchasePrice !== '')
+    ? Number(ks.purchasePrice)
     : (() => {
         const pp = data.analysis?.purchasePrice
         if (!pp) return null
         const n = parseFloat(String(pp).replace(/[^0-9.]/g, ''))
         return n > 0 ? n : null
       })()
-  if (devCost != null) {
+
+  if (purchasePrice != null) {
     const budgetSheet = workbook.getWorksheet('Budget')
     if (budgetSheet) {
       const k9 = budgetSheet.getCell('K9')
       if (k9.type !== ExcelJS.ValueType.Formula && !k9.formula) {
-        k9.value = devCost
+        k9.value = purchasePrice
         written++
-        log.push(`  Budget!K9: Purchase Price / Dev Cost = ${devCost}`)
+        log.push(`  Budget!K9 = ${purchasePrice}`)
       } else {
-        log.push(`  Budget!K9: SKIPPED (formula cell) — Dev Cost`)
+        log.push(`  Budget!K9: SKIPPED (formula cell)`)
+      }
+      const d5 = budgetSheet.getCell('D5')
+      if (d5.type !== ExcelJS.ValueType.Formula && !d5.formula) {
+        d5.value = purchasePrice
+        written++
+        log.push(`  Budget!D5 = ${purchasePrice}`)
+      } else {
+        log.push(`  Budget!D5: SKIPPED (formula cell)`)
       }
     }
     // Also attempt F220 in case this template has it as an input cell
-    w('F220', devCost, 'Total Dev Cost (F220 fallback)')
+    w('F220', purchasePrice, 'Total Dev Cost (F220 fallback)')
+  }
+
+  // F220 is a formula (=+H118 from Budget sheet) — totalDevCost is a separate override
+  // for development cost scenarios distinct from acquisition price.
+  const devCost = (ks.totalDevCost != null && ks.totalDevCost !== '') ? Number(ks.totalDevCost) : null
+  if (devCost != null) {
+    w('F220', devCost, 'Total Dev Cost (F220)')
   }
 
   // Cap rate → G34; guard against zero (would cause H34 = NOI/0 = #DIV/0!)
