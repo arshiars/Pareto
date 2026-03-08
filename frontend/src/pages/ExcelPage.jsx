@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAnalysis } from '../context/AnalysisContext.jsx'
 import { calculateNOI } from '../utils/calculations.js'
-import { formatCurrency, formatPercent } from '../utils/formatters.js'
+import { formatCurrency } from '../utils/formatters.js'
 import { populateExcel } from '../services/api.js'
 import StepIndicator from '../components/StepIndicator.jsx'
 import PptSuggestionsModal from '../components/PptSuggestionsModal.jsx'
@@ -151,6 +151,15 @@ function SpreadsheetIcon() {
   )
 }
 
+function PresentationIcon() {
+  return (
+    <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+    </svg>
+  )
+}
+
 export default function ExcelPage() {
   const { state, goToReview, setDefault } = useAnalysis()
   const { extractedData, userOverrides, defaults } = state
@@ -169,6 +178,12 @@ export default function ExcelPage() {
       replacementReservePerAppliance: 180,
     })
     return {
+      purchasePrice: (() => {
+        const pp = extractedData?.analysis?.purchasePrice
+        if (!pp) return ''
+        const n = parseFloat(String(pp).replace(/[^0-9.]/g, ''))
+        return n > 0 ? String(n) : ''
+      })(),
       loanType:           '',
       region:             guessRegion(pi.region),
       propertyType:       guessPropertyType(pi.propertyType),
@@ -208,6 +223,13 @@ export default function ExcelPage() {
   if (!extractedData) return null
 
   const noi = calculateNOI(extractedData, userOverrides, defaults)
+
+  const REQUIRED_DROPDOWN_KEYS = KS_FIELDS.map((f) => f.key)
+  const missingRequired = [
+    ...REQUIRED_DROPDOWN_KEYS.filter((k) => !ksInputs[k]),
+    ...(!ksInputs.purchasePrice ? ['purchasePrice'] : []),
+  ]
+  const canPopulate = missingRequired.length === 0
 
   // Full data payload sent to backend for Excel population
   const noiData = {
@@ -279,9 +301,6 @@ export default function ExcelPage() {
     a.click()
   }
 
-  const propInfo = extractedData.propertyInfo
-  const units = extractedData.unitBreakdown ?? []
-
   return (
     <div>
       <StepIndicator currentStep="excel" />
@@ -296,22 +315,145 @@ export default function ExcelPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="accent" onClick={() => setShowPptModal(true)}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-            </svg>
-            PowerPoint Suggestions
-          </Button>
           <Button variant="secondary" onClick={goToReview}>
             ← Back to Review
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Left: upload + status */}
-        <div className="col-span-2 space-y-4">
+      <div className="space-y-4">
+          {/* How it works */}
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">How It Works</h3>
+            <ol className="space-y-2 text-sm text-gray-600">
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Fill in the Financing Parameters and KS Database Inputs below.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> Click <strong>Populate Template</strong> to generate your Economics spreadsheet.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> Click <strong>Generate Suggestions</strong> to get AI-written content for your PowerPoint slides.</li>
+            </ol>
+          </Card>
+
+          {/* Financing Parameters */}
+          <Card className="p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Financing Parameters</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Mortgage terms used in the Economics sheet.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Amortization"
+                suffix="yrs"
+                type="number"
+                value={ksInputs.amortization}
+                onChange={(e) => setKsField('amortization', e.target.value)}
+                placeholder="35"
+              />
+              <Input
+                label="Lender Fee"
+                suffix="%"
+                type="number"
+                value={ksInputs.lenderFee}
+                onChange={(e) => setKsField('lenderFee', e.target.value)}
+                placeholder="0"
+              />
+              <Input
+                label="CMHC Max Rate"
+                suffix="%"
+                type="number"
+                value={ksInputs.cmhcMaxRate}
+                onChange={(e) => setKsField('cmhcMaxRate', e.target.value)}
+                placeholder="4.5"
+              />
+            </div>
+          </Card>
+
+          {/* KS Database Inputs */}
+          <Card className="p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">KS Database Inputs</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Select values for fields that require manual input in the Economics sheet (F200–F220).</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Purchase Price *"
+                prefix="$"
+                type="number"
+                placeholder="e.g. 5000000"
+                value={ksInputs.purchasePrice}
+                onChange={(e) => setKsField('purchasePrice', e.target.value)}
+              />
+              {KS_FIELDS.map(({ key, label }) => (
+                <Select
+                  key={key}
+                  label={`${label} *`}
+                  value={ksInputs[key]}
+                  options={KS_OPTIONS[key]}
+                  onChange={(e) => setKsField(key, e.target.value)}
+                  error={!ksInputs[key]}
+                />
+              ))}
+              <Input
+                label="Cap Rate"
+                suffix="%"
+                type="number"
+                placeholder="e.g. 5.50"
+                value={ksInputs.capRate}
+                onChange={(e) => setKsField('capRate', e.target.value)}
+              />
+              <Input
+                label="LTV Limit"
+                suffix="%"
+                type="number"
+                placeholder="e.g. 85"
+                value={ksInputs.ltv}
+                onChange={(e) => setKsField('ltv', e.target.value)}
+              />
+              <Input
+                label="Heat Pumps & AC Units"
+                type="number"
+                placeholder="count"
+                value={ksInputs.heatPumps}
+                onChange={(e) => setKsField('heatPumps', e.target.value)}
+              />
+              <Input
+                label="Elevators (Wood Frame)"
+                type="number"
+                placeholder="count"
+                value={ksInputs.elevators}
+                onChange={(e) => setKsField('elevators', e.target.value)}
+              />
+              <Input
+                label="Affordability Points"
+                type="number"
+                placeholder="0"
+                value={ksInputs.affordabilityPts}
+                onChange={(e) => setKsField('affordabilityPts', e.target.value)}
+              />
+              <Input
+                label="Energy Efficiency Points"
+                type="number"
+                placeholder="0"
+                value={ksInputs.energyEfficiencyPts}
+                onChange={(e) => setKsField('energyEfficiencyPts', e.target.value)}
+              />
+              <Input
+                label="Accessibility Points"
+                type="number"
+                placeholder="0"
+                value={ksInputs.accessibilityPts}
+                onChange={(e) => setKsField('accessibilityPts', e.target.value)}
+              />
+              <Input
+                label="Total Development Cost"
+                prefix="$"
+                type="number"
+                placeholder="e.g. 5000000"
+                value={ksInputs.totalDevCost}
+                onChange={(e) => setKsField('totalDevCost', e.target.value)}
+              />
+            </div>
+          </Card>
+
+          {/* Economics Template */}
           <Card className="p-6 space-y-5">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -380,10 +522,15 @@ export default function ExcelPage() {
             {/* Action */}
             {status !== 'loading' && (
               <div className="flex justify-end items-center gap-3">
-                {status === 'done' && (
+                {!canPopulate && (
+                  <p className="text-xs text-amber-600">
+                    {missingRequired.length} required field{missingRequired.length > 1 ? 's' : ''} missing — fill all dropdowns and Purchase Price to continue.
+                  </p>
+                )}
+                {canPopulate && status === 'done' && (
                   <p className="text-xs text-gray-400">Changed a value above? Re-populate to update the file.</p>
                 )}
-                <Button variant="primary" size="lg" onClick={handlePopulate}>
+                <Button variant="primary" size="lg" onClick={handlePopulate} disabled={!canPopulate} className="!bg-[#217346] !border-[#217346] !text-white hover:!opacity-90 !ring-2 !ring-amber-400 min-w-[220px]">
                   {status === 'done' ? 'Re-populate' : 'Populate Template'}
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -393,169 +540,26 @@ export default function ExcelPage() {
             )}
           </Card>
 
-          {/* Calculation Defaults */}
-          <Card className="p-6 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Calculation Defaults</h3>
-              <p className="text-xs text-gray-400 mt-0.5">These rates affect the NOI calculation used to populate the template.</p>
+          {/* PowerPoint Suggestions */}
+          <Card className="p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <PresentationIcon />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-primary">PowerPoint Suggestions</h3>
+                <p className="text-xs text-gray-400 mt-0.5">AI-generated content for your PowerPoint slides.</p>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Vacancy Rate"
-                suffix="%"
-                type="number"
-                value={(defaults.vacancyRate * 100).toFixed(2)}
-                onChange={(e) => setDefault('vacancyRate', Number(e.target.value) / 100)}
-                placeholder="3.00"
-              />
-              <Input
-                label="Management Fee Rate"
-                suffix="%"
-                type="number"
-                value={(defaults.managementFeeRate * 100).toFixed(2)}
-                onChange={(e) => setDefault('managementFeeRate', Number(e.target.value) / 100)}
-                placeholder="4.25"
-              />
-              <Input
-                label="Other Deductions Rate"
-                suffix="%"
-                type="number"
-                value={(defaults.otherDeductionsRate * 100).toFixed(2)}
-                onChange={(e) => setDefault('otherDeductionsRate', Number(e.target.value) / 100)}
-                placeholder="1.00"
-              />
-              <Input
-                label="Replacement Reserve / Appliance"
-                prefix="$"
-                type="number"
-                value={defaults.replacementReservePerAppliance}
-                onChange={(e) => setDefault('replacementReservePerAppliance', Number(e.target.value))}
-                placeholder="180"
-              />
-            </div>
-          </Card>
 
-          {/* Financing Parameters */}
-          <Card className="p-6 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Financing Parameters</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Mortgage terms used in the Economics sheet.</p>
+            <div className="flex justify-end">
+              <Button variant="primary" size="lg" onClick={() => setShowPptModal(true)} className="!bg-[#D24726] !border-[#D24726] !text-white hover:!opacity-90 !ring-2 !ring-amber-400 min-w-[220px]">
+                Generate Suggestions
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </Button>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Amortization"
-                suffix="yrs"
-                type="number"
-                value={ksInputs.amortization}
-                onChange={(e) => setKsField('amortization', e.target.value)}
-                placeholder="35"
-              />
-              <Input
-                label="Lender Fee"
-                suffix="%"
-                type="number"
-                value={ksInputs.lenderFee}
-                onChange={(e) => setKsField('lenderFee', e.target.value)}
-                placeholder="0"
-              />
-              <Input
-                label="CMHC Max Rate"
-                suffix="%"
-                type="number"
-                value={ksInputs.cmhcMaxRate}
-                onChange={(e) => setKsField('cmhcMaxRate', e.target.value)}
-                placeholder="4.5"
-              />
-            </div>
-          </Card>
-
-          {/* KS Database Inputs */}
-          <Card className="p-6 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">KS Database Inputs</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Select values for fields that require manual input in the Economics sheet (F200–F220).</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {KS_FIELDS.map(({ key, label }) => (
-                <Select
-                  key={key}
-                  label={label}
-                  value={ksInputs[key]}
-                  options={KS_OPTIONS[key]}
-                  onChange={(e) => setKsField(key, e.target.value)}
-                />
-              ))}
-              <Input
-                label="Cap Rate"
-                suffix="%"
-                type="number"
-                placeholder="e.g. 5.50"
-                value={ksInputs.capRate}
-                onChange={(e) => setKsField('capRate', e.target.value)}
-              />
-              <Input
-                label="LTV Limit"
-                suffix="%"
-                type="number"
-                placeholder="e.g. 85"
-                value={ksInputs.ltv}
-                onChange={(e) => setKsField('ltv', e.target.value)}
-              />
-              <Input
-                label="Heat Pumps & AC Units"
-                type="number"
-                placeholder="count"
-                value={ksInputs.heatPumps}
-                onChange={(e) => setKsField('heatPumps', e.target.value)}
-              />
-              <Input
-                label="Elevators (Wood Frame)"
-                type="number"
-                placeholder="count"
-                value={ksInputs.elevators}
-                onChange={(e) => setKsField('elevators', e.target.value)}
-              />
-              <Input
-                label="Affordability Points"
-                type="number"
-                placeholder="0"
-                value={ksInputs.affordabilityPts}
-                onChange={(e) => setKsField('affordabilityPts', e.target.value)}
-              />
-              <Input
-                label="Energy Efficiency Points"
-                type="number"
-                placeholder="0"
-                value={ksInputs.energyEfficiencyPts}
-                onChange={(e) => setKsField('energyEfficiencyPts', e.target.value)}
-              />
-              <Input
-                label="Accessibility Points"
-                type="number"
-                placeholder="0"
-                value={ksInputs.accessibilityPts}
-                onChange={(e) => setKsField('accessibilityPts', e.target.value)}
-              />
-              <Input
-                label="Total Development Cost"
-                prefix="$"
-                type="number"
-                placeholder="e.g. 5000000"
-                value={ksInputs.totalDevCost}
-                onChange={(e) => setKsField('totalDevCost', e.target.value)}
-              />
-            </div>
-          </Card>
-
-          {/* How it works */}
-          <Card className="p-5">
-            <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">How It Works</h3>
-            <ol className="space-y-2 text-sm text-gray-600">
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Your NOI data — extracted from documents in step 1 and reviewed in step 2 — is finalized and ready to write.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> Review KS Database Inputs and Financing Parameters above, then click <strong>Populate Template</strong>.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> The tool writes values directly to the mapped input cells: income, expenses, unit breakdown, and KS database fields.</li>
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">4.</span> Formula cells are <strong>never touched</strong> — they auto-calculate from the populated inputs.</li>
-            </ol>
           </Card>
         </div>
 
@@ -567,75 +571,6 @@ export default function ExcelPage() {
             onClose={() => setShowPptModal(false)}
           />
         )}
-
-        {/* Right: data summary */}
-        <div className="space-y-4">
-          <Card className="p-5">
-            <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">Data to Populate</h3>
-            <div className="space-y-3 text-sm">
-              {propInfo?.address && (
-                <div>
-                  <p className="text-xs text-gray-400">Address</p>
-                  <p className="font-medium text-gray-800 text-xs mt-0.5">{propInfo.address}</p>
-                </div>
-              )}
-
-              {units.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Unit Mix</p>
-                  {units.map((u, i) => {
-                    const rent = userOverrides[`unit.${u.type}.rent`] ?? u.avgMonthlyRent ?? 0
-                    return (
-                      <p key={i} className="text-xs text-gray-600">
-                        {u.type}: {u.count} × ${rent.toLocaleString('en-CA')}/mo
-                      </p>
-                    )
-                  })}
-                </div>
-              )}
-
-              <div className="border-t border-border pt-3 space-y-1.5">
-                {[
-                  { label: 'GPR',                                                    value: formatCurrency(noi.gpr) },
-                  { label: `Vacancy (${formatPercent(defaults.vacancyRate)})`,        value: `(${formatCurrency(noi.vacancyLoss)})` },
-                  noi.parking    > 0 && { label: 'Parking Income',  value: formatCurrency(noi.parking) },
-                  noi.storage    > 0 && { label: 'Storage Income',  value: formatCurrency(noi.storage) },
-                  noi.laundry    > 0 && { label: 'Laundry Income',  value: formatCurrency(noi.laundry) },
-                  noi.otherIncome > 0 && { label: 'Other Income',   value: formatCurrency(noi.otherIncome) },
-                  { label: 'EGI',                                                    value: formatCurrency(noi.egi) },
-                ].filter(Boolean).map(({ label, value }) => (
-                  <div key={label} className="flex justify-between">
-                    <span className="text-gray-500">{label}</span>
-                    <span className="font-medium tabular-nums">{value}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-border pt-3 space-y-1.5">
-                {[
-                  { label: 'Property Taxes', value: noi.propertyTaxes },
-                  { label: 'Insurance',       value: noi.insurance },
-                  { label: 'Utilities',        value: noi.utilities },
-                  { label: 'R&M',              value: noi.repairsAndMaintenance },
-                  { label: 'Payroll & Admin',  value: noi.payrollAndAdmin },
-                  { label: 'Mgmt Fee',         value: noi.managementFee },
-                  { label: 'Replacement Res.', value: noi.replacementReserve },
-                ].filter(({ value }) => value > 0).map(({ label, value }) => (
-                  <div key={label} className="flex justify-between">
-                    <span className="text-gray-500">{label}</span>
-                    <span className="font-medium tabular-nums">{formatCurrency(value)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t-2 border-primary pt-3 flex justify-between font-bold">
-                <span className="text-primary">NOI</span>
-                <span className="text-primary tabular-nums">{formatCurrency(noi.noi)}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
       </div>
-    </div>
   )
 }

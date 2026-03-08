@@ -25,9 +25,12 @@ export default function Gateway({ onAuthenticated }) {
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="w-full max-w-sm">
         <div className="bg-white border border-border rounded-[2px] p-8">
-          <div className="mb-6">
-            <h1 className="text-primary text-lg font-bold tracking-tight">Windsor</h1>
-            <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">CMHC Underwriting</p>
+          <div className="mb-6 flex items-center gap-4">
+            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
+            <div>
+              <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">CMHC Underwriting</p>
+            </div>
           </div>
           <form onSubmit={handleSubmit}>
             <label className="block text-xs font-medium text-[#555555] uppercase tracking-widest mb-2">
