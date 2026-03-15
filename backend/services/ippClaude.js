@@ -126,7 +126,7 @@ export async function extractIppFromDocuments(files, labels = []) {
 
     const response = await getClient().messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 8192,
+      max_tokens: 16000,
       system: [
         {
           type: 'text',

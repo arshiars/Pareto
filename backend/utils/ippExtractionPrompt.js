@@ -78,7 +78,7 @@ Return exactly this JSON structure:
   "tenants": []
 }
 
-For each tenant found in a rent roll or lease schedule, append an object to "tenants":
+For each occupied tenant AND each vacant unit found in a rent roll or lease schedule, append an object to "tenants":
 {
   "tenant":        { "value": null, "source": null },
   "area":          { "value": null, "source": null },
@@ -107,6 +107,7 @@ Additional rules:
 - "contingency" value is the contingency dollar amount (number, not a percentage)
 - "devManagementFee" value is the development management fee dollar amount (number, not a percentage)
 - If a document label hint is provided (e.g., "Broker CIM", "Rent Roll"), use it as the source string for fields you extract from that document
+- CRITICAL: Extract ALL rows including vacant units. Vacant units may appear under section headers like "Vacant", "Vacant Retail Units", "Available", or similar. For vacant rows, use the unit identifier (e.g. "Unit 101 — Vacant") or "Vacant" as the tenant name, set annualRent to 0 (or the broker's assumed rent if stated), and extract the area. Vacant units are essential for calculating total building square footage.
 - Extract all tenants you can find, even if only partial information is available
 - Be concise with source strings: "Broker CIM", "Rent Roll", "Operating Statement", "Tax Bill", "Insurance Bill", "Utility Bill" are preferred`
 }
@@ -135,11 +136,12 @@ Return exactly this structure:
 }
 
 Rules:
-- Extract every tenant you can find, even partial rows
+- Extract every row including vacant units — do NOT skip rows just because rent is $0 or the unit is unoccupied
+- Vacant units may appear under section headers like "Vacant", "Vacant Retail Units", "Available", or similar. Include each one as a separate entry. Use the unit identifier (e.g. "Unit 101 — Vacant") or "Vacant" as the tenant name; set annualRent to 0 unless the document states an assumed rent
 - area: rentable square feet (number)
 - rate: annual rent per square foot (number)
-- annualRent: total annual base rent in dollars (number); if only monthly stated, multiply by 12
-- leaseStart / leaseEnd: date strings, YYYY-MM-DD preferred
+- annualRent: total annual base rent in dollars (number); if only monthly stated, multiply by 12; 0 for vacant units unless a broker assumption is stated
+- leaseStart / leaseEnd: date strings, YYYY-MM-DD preferred; null for vacant units
 - renewalOption: string, e.g. "2 x 5 years at FMR", or null
 - rentSteps: string describing escalations, or null
 - tiAmount: tenant improvement allowance in dollars (number), or null

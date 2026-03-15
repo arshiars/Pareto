@@ -37,8 +37,10 @@ function calcNOI(data, overrides) {
   const propTaxes      = v(data.expenses?.propertyTaxes,            'expenses.propertyTaxes')
   const utilities      = v(data.expenses?.utilities,                 'expenses.utilities')
   const otherRecov     = v(data.expenses?.otherRecoverableExpenses,  'expenses.otherRecoverableExpenses')
-  const mgmtFee        = v(data.expenses?.managementFee,             'expenses.managementFee')
-  const structReserve  = v(data.expenses?.structuralReserve,         'expenses.structuralReserve')
+  const mgmtFeeRaw     = v(data.expenses?.managementFee,             'expenses.managementFee',    null)
+  const structResRaw   = v(data.expenses?.structuralReserve,         'expenses.structuralReserve', null)
+  const mgmtFee        = mgmtFeeRaw    ?? (egi * 0.035)
+  const structReserve  = structResRaw  ?? (egi * 0.01)
 
   const totalOpEx = propTaxes + utilities + otherRecov + mgmtFee + structReserve
   const noi       = egi - totalOpEx
@@ -65,8 +67,13 @@ function calcNOI(data, overrides) {
 
 // ─── Source badge ─────────────────────────────────────────────────────────────
 
-function Src({ source, overridden }) {
+function Src({ source, overridden, isDefault }) {
   if (!source) return <span className="text-[11px] text-[#dddddd]">not found</span>
+  if (isDefault) return (
+    <span className="text-[11px] px-1.5 py-0.5 rounded-sm font-medium whitespace-nowrap border border-dashed border-[#cccccc] text-[#aaaaaa]">
+      {source}
+    </span>
+  )
   return (
     <span className={`text-[11px] px-1.5 py-0.5 rounded-sm font-medium whitespace-nowrap ${
       overridden ? 'bg-accent/15 text-accent' : 'bg-surface text-[#aaaaaa]'
@@ -78,11 +85,13 @@ function Src({ source, overridden }) {
 
 // ─── Inline-editable waterfall row ───────────────────────────────────────────
 
-function Row({ label, extracted, overrideKey, type = 'currency', indent = false, dimLabel = false, onUpload = null, uploading = false }) {
+function Row({ label, extracted, overrideKey, type = 'currency', indent = false, dimLabel = false, onUpload = null, uploading = false, defaultValue, defaultSource }) {
   const { state: { userOverrides }, setOverride } = useIPP()
   const overridden = userOverrides[overrideKey] !== undefined
-  const value  = overridden ? userOverrides[overrideKey] : (extracted?.value ?? null)
-  const source = overridden ? 'Manual entry' : (extracted?.source ?? null)
+  const rawValue   = extracted?.value ?? null
+  const isDefault  = !overridden && rawValue == null && defaultValue !== undefined
+  const value      = overridden ? userOverrides[overrideKey] : (rawValue ?? (defaultValue ?? null))
+  const source     = overridden ? 'Manual entry' : (rawValue != null ? extracted?.source : (isDefault ? defaultSource : null))
 
   const [editing, setEditing] = useState(false)
   const [input,   setInput]   = useState('')
@@ -122,7 +131,12 @@ function Row({ label, extracted, overrideKey, type = 'currency', indent = false,
           </span>
         ) : (
           <span className="inline-flex items-center gap-2 justify-end">
-            <span className={value == null ? 'text-[#cccccc]' : overridden ? 'text-accent font-medium' : 'text-primary'}>
+            <span className={
+              isDefault    ? 'text-[#aaaaaa] italic' :
+              value == null ? 'text-[#cccccc]' :
+              overridden   ? 'text-accent font-medium' :
+              'text-primary'
+            }>
               {display ?? '—'}
             </span>
             <span className="opacity-0 group-hover/row:opacity-100 transition-opacity flex items-center gap-2">
@@ -152,7 +166,7 @@ function Row({ label, extracted, overrideKey, type = 'currency', indent = false,
         )}
       </td>
       <td className="py-2 pr-5 text-right w-[28%]">
-        <Src source={source} overridden={overridden} />
+        <Src source={source} overridden={overridden} isDefault={isDefault} />
       </td>
     </tr>
   )
@@ -567,7 +581,11 @@ function RentRoll({ tenants, onSave }) {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border bg-primary/[0.04]">
-                  <td className="py-2.5 px-3 text-xs font-bold text-primary" colSpan={3}>Total</td>
+                  <td className="py-2.5 px-3 text-xs font-bold text-primary">Total</td>
+                  <td className="py-2.5 px-3 text-sm font-bold text-primary tabular-nums">
+                    {totalSf > 0 ? `${NUM(totalSf)} sf` : '—'}
+                  </td>
+                  <td />
                   <td className="py-2.5 px-3 text-sm font-bold text-primary tabular-nums">
                     {totalAnnualRent > 0 ? CAD(totalAnnualRent) : '—'}
                     {!hasAllRents && totalAnnualRent > 0 && <span className="ml-1 text-[10px] text-warning font-normal">partial</span>}
@@ -597,20 +615,21 @@ function AcquisitionSection({ acquisition, save }) {
     { label: 'Soft Costs',              field: 'softCosts' },
     { label: 'Dev. Management Fee',     field: 'devManagementFee' },
     { label: 'Financing Costs',         field: 'financingCosts' },
-    { label: 'Total Budget',            field: 'totalBudget' },
-    { label: 'Total KingSett Exposure', field: 'totalKingsettExposure' },
+    { label: 'Total Budget',            field: 'totalBudget',           noDefault: true },
+    { label: 'Total KingSett Exposure', field: 'totalKingsettExposure', noDefault: true },
     { label: 'Sub Debt Amount',         field: 'subDebtAmount' },
   ]
   return (
     <table className="w-full">
       <tbody>
-        {rows.map(({ label, field, type = 'currency' }, i, arr) => (
+        {rows.map(({ label, field, type = 'currency', noDefault }) => (
           <Row
             key={field}
             label={label}
             extracted={acquisition?.[field]}
             overrideKey={`acquisition.${field}`}
             type={type}
+            {...(!noDefault && { defaultValue: 0, defaultSource: 'Default: $0' })}
           />
         ))}
       </tbody>
@@ -629,7 +648,7 @@ function UsesSection({ usesOfFunds }) {
     <table className="w-full">
       <tbody>
         {rows.map(({ label, field }) => (
-          <Row key={field} label={label} extracted={usesOfFunds?.[field]} overrideKey={`usesOfFunds.${field}`} />
+          <Row key={field} label={label} extracted={usesOfFunds?.[field]} overrideKey={`usesOfFunds.${field}`} defaultValue={0} defaultSource="Default: $0" />
         ))}
       </tbody>
     </table>
@@ -875,6 +894,7 @@ export default function Step2Review({ onBack }) {
       <div className="flex items-center gap-5 text-[11px] text-[#aaaaaa]">
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-surface border border-border inline-block" />Extracted</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent/30 inline-block" />Manual override</span>
+        <span className="flex items-center gap-1.5"><span className="italic text-[#aaaaaa]">$0</span>&nbsp;<span className="text-[10px] border border-dashed border-[#cccccc] rounded-sm px-1">Default</span>Applied default</span>
         <span className="flex items-center gap-1.5"><span className="text-[#dddddd] font-bold">—</span>Not found</span>
       </div>
 
@@ -910,10 +930,10 @@ export default function Step2Review({ onBack }) {
             {/* ── Income ── */}
             <SectionHead label="Income" />
             <CalcRow label="Total Base Rent" value={c.totalBaseRent || null} />
-            <Row label="(+) Other Misc. Rent"              extracted={income?.otherMiscRent?.annualTotal}     overrideKey="income.otherMiscRent.annualTotal"    indent />
-            <Row label="(+) Recoverable Rent — Prop. Tax"  extracted={income?.recoverableRent?.propertyTax}   overrideKey="income.recoverableRent.propertyTax"  indent />
-            <Row label="(+) Recoverable Rent — Utilities"  extracted={income?.recoverableRent?.utilities}     overrideKey="income.recoverableRent.utilities"    indent />
-            <Row label="(+) Recoverable Rent — All Other"  extracted={income?.recoverableRent?.allOther}      overrideKey="income.recoverableRent.allOther"     indent />
+            <Row label="(+) Other Misc. Rent"              extracted={income?.otherMiscRent?.annualTotal}     overrideKey="income.otherMiscRent.annualTotal"    indent defaultValue={0} defaultSource="Default: $0" />
+            <Row label="(+) Recoverable Rent — Prop. Tax"  extracted={income?.recoverableRent?.propertyTax}   overrideKey="income.recoverableRent.propertyTax"  indent defaultValue={0} defaultSource="Default: $0" />
+            <Row label="(+) Recoverable Rent — Utilities"  extracted={income?.recoverableRent?.utilities}     overrideKey="income.recoverableRent.utilities"    indent defaultValue={0} defaultSource="Default: $0" />
+            <Row label="(+) Recoverable Rent — All Other"  extracted={income?.recoverableRent?.allOther}      overrideKey="income.recoverableRent.allOther"     indent defaultValue={0} defaultSource="Default: $0" />
             <CalcRow label="Gross Rent" value={c.grossRent || null} highlight topBorder />
             <Row
               label={`Less: Vacancy Allowance${c.vacancyPct > 0 ? ` (${PCT(c.vacancyPct)})` : ''}`}
@@ -927,11 +947,11 @@ export default function Step2Review({ onBack }) {
 
             {/* ── Expenses ── */}
             <SectionHead label="Operating Expenses" />
-            <Row label="(-) Property Taxes"             extracted={expenses?.propertyTaxes}            overrideKey="expenses.propertyTaxes"            indent onUpload={() => triggerExpenseUpload('expenses.propertyTaxes')}            uploading={uploadingExpense === 'expenses.propertyTaxes'} />
-            <Row label="(-) Utilities"                  extracted={expenses?.utilities}                overrideKey="expenses.utilities"                indent onUpload={() => triggerExpenseUpload('expenses.utilities')}                uploading={uploadingExpense === 'expenses.utilities'} />
-            <Row label="(-) Other Recoverable Expenses" extracted={expenses?.otherRecoverableExpenses} overrideKey="expenses.otherRecoverableExpenses"  indent onUpload={() => triggerExpenseUpload('expenses.otherRecoverableExpenses')} uploading={uploadingExpense === 'expenses.otherRecoverableExpenses'} />
-            <Row label="(-) Management Fee"             extracted={expenses?.managementFee}            overrideKey="expenses.managementFee"            indent onUpload={() => triggerExpenseUpload('expenses.managementFee')}            uploading={uploadingExpense === 'expenses.managementFee'} />
-            <Row label="(-) Structural Reserve"         extracted={expenses?.structuralReserve}        overrideKey="expenses.structuralReserve"         indent onUpload={() => triggerExpenseUpload('expenses.structuralReserve')}         uploading={uploadingExpense === 'expenses.structuralReserve'} />
+            <Row label="(-) Property Taxes"             extracted={expenses?.propertyTaxes}            overrideKey="expenses.propertyTaxes"            indent defaultValue={0} defaultSource="Default: $0" onUpload={() => triggerExpenseUpload('expenses.propertyTaxes')}            uploading={uploadingExpense === 'expenses.propertyTaxes'} />
+            <Row label="(-) Utilities"                  extracted={expenses?.utilities}                overrideKey="expenses.utilities"                indent defaultValue={0} defaultSource="Default: $0" onUpload={() => triggerExpenseUpload('expenses.utilities')}                uploading={uploadingExpense === 'expenses.utilities'} />
+            <Row label="(-) Other Recoverable Expenses" extracted={expenses?.otherRecoverableExpenses} overrideKey="expenses.otherRecoverableExpenses"  indent defaultValue={0} defaultSource="Default: $0" onUpload={() => triggerExpenseUpload('expenses.otherRecoverableExpenses')} uploading={uploadingExpense === 'expenses.otherRecoverableExpenses'} />
+            <Row label="(-) Management Fee"             extracted={expenses?.managementFee}            overrideKey="expenses.managementFee"            indent defaultValue={c.egi * 0.035} defaultSource="Default: 3.5% of EGR" onUpload={() => triggerExpenseUpload('expenses.managementFee')}            uploading={uploadingExpense === 'expenses.managementFee'} />
+            <Row label="(-) Structural Reserve"         extracted={expenses?.structuralReserve}        overrideKey="expenses.structuralReserve"         indent defaultValue={c.egi * 0.01}  defaultSource="Default: 1.0% of EGR" onUpload={() => triggerExpenseUpload('expenses.structuralReserve')}         uploading={uploadingExpense === 'expenses.structuralReserve'} />
             <CalcRow label="Total Operating Expenses" value={c.totalOpEx || null} topBorder />
 
             {/* ── NOI ── */}

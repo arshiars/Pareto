@@ -66,6 +66,27 @@ export async function populateIppExcel(extractedData, userOverrides = {}) {
     }
   }
 
+  // Like write(), but applies a fallback value/source when the field was not found
+  // and the user has not explicitly overridden it.
+  function writeDefault(sheet, addrs, key, kRow, label, fallback, fallbackSource) {
+    const meta       = resolveMeta(extractedData, userOverrides, key)
+    const isDefaulted = meta.isNull && !meta.isOverride
+    const val        = meta.value ?? (isDefaulted ? fallback : null)
+    const source     = isDefaulted ? fallbackSource : meta.source
+    const addresses  = Array.isArray(addrs) ? addrs : [addrs]
+    addresses.forEach(addr => setCell(sheet, addr, val))
+    if (kRow != null) {
+      commentFields.push({
+        row:        String(kRow),
+        label,
+        value:      val,
+        source,
+        isOverride: meta.isOverride,
+        isNull:     val == null,
+      })
+    }
+  }
+
   // ── Property Info ────────────────────────────────────────────────────────────
   // Row 3 has both J3 (address) and C3 (siteArea) — combine into one K3 comment.
   const addrMeta     = resolveMeta(extractedData, userOverrides, 'propertyInfo.address')
@@ -87,18 +108,38 @@ export async function populateIppExcel(extractedData, userOverrides = {}) {
   write(uw, 'C8', 'propertyInfo.yearBuilt',  8,    'Year Built (C8)')
 
   // ── Income ───────────────────────────────────────────────────────────────────
-  write(uw, ['G20', 'J20'], 'income.otherMiscRent.annualTotal',    20, '(+) Other Misc. Rent (G20/J20)')
-  write(uw, ['G21', 'J21'], 'income.recoverableRent.propertyTax',  21, '(+) Recoverable Rent — Property Tax (G21/J21)')
-  write(uw, ['G22', 'J22'], 'income.recoverableRent.utilities',    22, '(+) Recoverable Rent — Utilities (G22/J22)')
-  write(uw, ['G23', 'J23'], 'income.recoverableRent.allOther',     23, '(+) Recoverable Rent — All Other (G23/J23)')
+  writeDefault(uw, ['G20', 'J20'], 'income.otherMiscRent.annualTotal',    20, '(+) Other Misc. Rent (G20/J20)',                      0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G21', 'J21'], 'income.recoverableRent.propertyTax',  21, '(+) Recoverable Rent — Property Tax (G21/J21)',       0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G22', 'J22'], 'income.recoverableRent.utilities',    22, '(+) Recoverable Rent — Utilities (G22/J22)',          0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G23', 'J23'], 'income.recoverableRent.allOther',     23, '(+) Recoverable Rent — All Other (G23/J23)',          0, 'Default: $0 — not found in documents')
   write(uw, 'I25',          'income.vacancyAllowancePct',          25, 'Stabilized Vacancy Allowance % (I25)', null)
 
   // ── Expenses ─────────────────────────────────────────────────────────────────
-  write(uw, ['G27', 'J27'], 'expenses.propertyTaxes',            27, '(-) Property Taxes (G27/J27)')
-  write(uw, ['G28', 'J28'], 'expenses.utilities',                28, '(-) Utilities (G28/J28)')
-  write(uw, ['G29', 'J29'], 'expenses.otherRecoverableExpenses', 29, '(-) Other Recoverable Expenses (G29/J29)')
-  write(uw, ['G30', 'J30'], 'expenses.managementFee',           30, '(-) Management Fee (G30/J30)')
-  write(uw, ['G31', 'J31'], 'expenses.structuralReserve',        31, '(-) Structural Reserve (G31/J31)')
+  writeDefault(uw, ['G27', 'J27'], 'expenses.propertyTaxes',            27, '(-) Property Taxes (G27/J27)',            0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G28', 'J28'], 'expenses.utilities',                28, '(-) Utilities (G28/J28)',                 0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G29', 'J29'], 'expenses.otherRecoverableExpenses', 29, '(-) Other Recoverable Expenses (G29/J29)', 0, 'Default: $0 — not found in documents')
+
+  // Management Fee: default to 3.5% of EGI; Structural Reserve: default to 1.0% of EGI
+  // Compute EGI from tenant rents + misc income − vacancy
+  {
+    const tenantRent = (extractedData.tenants ?? []).reduce((sum, t, i) => {
+      const k  = `tenants.${i}.annualRent`
+      const ov = userOverrides[k]
+      return sum + (ov !== undefined ? (ov ?? 0) : (t.annualRent?.value ?? 0))
+    }, 0)
+    function rv(key) {
+      const meta = resolveMeta(extractedData, userOverrides, key)
+      return meta.value ?? 0
+    }
+    const grossRent = tenantRent + rv('income.otherMiscRent.annualTotal') +
+      rv('income.recoverableRent.propertyTax') + rv('income.recoverableRent.utilities') +
+      rv('income.recoverableRent.allOther')
+    const vacPct = rv('income.vacancyAllowancePct')
+    const egi    = grossRent * (1 - vacPct)
+
+    writeDefault(uw, ['G30', 'J30'], 'expenses.managementFee',    30, '(-) Management Fee (G30/J30)',    Math.round(egi * 0.035), 'Default: 3.5% of EGI — not found in documents')
+    writeDefault(uw, ['G31', 'J31'], 'expenses.structuralReserve',31, '(-) Structural Reserve (G31/J31)', Math.round(egi * 0.01), 'Default: 1.0% of EGI — not found in documents')
+  }
 
   // ── Cap Rate ─────────────────────────────────────────────────────────────────
   write(uw, ['E35', 'H35'], 'capRate', 35, 'Cap Rate (E35/H35)')
@@ -110,17 +151,17 @@ export async function populateIppExcel(extractedData, userOverrides = {}) {
   write(uw, 'J39', 'deductions.requiredCapEx',      39, 'Less: Required Cap Ex (J39)')
 
   // ── Purchase Price ───────────────────────────────────────────────────────────
-  write(uw, 'G41', 'acquisition.purchasePrice', 41, 'Purchase Price (G41)')
+  writeDefault(uw, 'G41', 'acquisition.purchasePrice', 41, 'Purchase Price (G41)', 0, 'Default: $0 — not found in documents')
 
   // ── Acquisition / Cost Stack ─────────────────────────────────────────────────
-  write(uw, ['G51', 'J51'], 'acquisition.landCost',         51, 'Land Cost (G51/J51)')
-  write(uw, ['G53', 'J53'], 'acquisition.landValue',        53, 'Land Value (G53/J53)')
-  write(uw, ['G54', 'J54'], 'acquisition.dcsAndLevies',     54, 'DCs and Levies (G54/J54)')
-  write(uw, ['G55', 'J55'], 'acquisition.hardCosts',        55, 'Hard Costs (G55/J55)')
-  write(uw, ['G56', 'J56'], 'acquisition.contingency',      56, 'Contingency $ (G56/J56)')
-  write(uw, ['G57', 'J57'], 'acquisition.softCosts',        57, 'Soft Costs (G57/J57)')
-  write(uw, ['G58', 'J58'], 'acquisition.devManagementFee', 58, 'Dev. Management Fee $ (G58/J58)')
-  write(uw, ['G59', 'J59'], 'acquisition.financingCosts',   59, 'Financing Costs (G59/J59)')
+  writeDefault(uw, ['G51', 'J51'], 'acquisition.landCost',         51, 'Land Cost (G51/J51)',          0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G53', 'J53'], 'acquisition.landValue',        53, 'Land Value (G53/J53)',         0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G54', 'J54'], 'acquisition.dcsAndLevies',     54, 'DCs and Levies (G54/J54)',     0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G55', 'J55'], 'acquisition.hardCosts',        55, 'Hard Costs (G55/J55)',         0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G56', 'J56'], 'acquisition.contingency',      56, 'Contingency $ (G56/J56)',      0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G57', 'J57'], 'acquisition.softCosts',        57, 'Soft Costs (G57/J57)',         0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G58', 'J58'], 'acquisition.devManagementFee', 58, 'Dev. Management Fee $ (G58/J58)', 0, 'Default: $0 — not found in documents')
+  writeDefault(uw, ['G59', 'J59'], 'acquisition.financingCosts',   59, 'Financing Costs (G59/J59)',    0, 'Default: $0 — not found in documents')
 
   // ── Total KingSett Exposure ──────────────────────────────────────────────────
   const tkeMeta = resolveMeta(extractedData, userOverrides, 'acquisition.totalKingsettExposure')
@@ -136,10 +177,14 @@ export async function populateIppExcel(extractedData, userOverrides = {}) {
   })
 
   // ── Uses of Funds (no K comment — these cells are on the right side of sheet) ─
-  setCell(uw, 'S5', resolveMeta(extractedData, userOverrides, 'usesOfFunds.payoutExistingDebt').value)
-  setCell(uw, 'S6', resolveMeta(extractedData, userOverrides, 'usesOfFunds.purchasePrice').value)
-  setCell(uw, 'S7', resolveMeta(extractedData, userOverrides, 'usesOfFunds.closingCosts').value)
-  setCell(uw, 'S8', resolveMeta(extractedData, userOverrides, 'usesOfFunds.equityTakeout').value)
+  function resolveDefault(key) {
+    const meta = resolveMeta(extractedData, userOverrides, key)
+    return meta.value ?? (meta.isOverride ? null : 0)
+  }
+  setCell(uw, 'S5', resolveDefault('usesOfFunds.payoutExistingDebt'))
+  setCell(uw, 'S6', resolveDefault('usesOfFunds.purchasePrice'))
+  setCell(uw, 'S7', resolveDefault('usesOfFunds.closingCosts'))
+  setCell(uw, 'S8', resolveDefault('usesOfFunds.equityTakeout'))
 
   // ── Rent Roll Sheet ──────────────────────────────────────────────────────────
   const tenants = extractedData.tenants ?? []
@@ -165,7 +210,7 @@ export async function populateIppExcel(extractedData, userOverrides = {}) {
   const vacant = resolved.filter(t =>  t.name.toLowerCase().includes('vacant'))
                           .sort((a, b) => (b.area ?? 0) - (a.area ?? 0))
 
-  const MAX_ROWS        = 24
+  const MAX_ROWS        = 35  // Rent Roll tab: rows 5–39
   const maxLeasedRows   = MAX_ROWS - vacant.length
   let leasedToWrite     = leased
   let overflowRow       = null
