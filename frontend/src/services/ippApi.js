@@ -47,6 +47,17 @@ export async function extractTenantLease(file) {
   return res.json()
 }
 
+export async function exportIppExcel(extractedData, userOverrides) {
+  const res = await fetch(`${BASE_URL}/ipp/export-excel`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extractedData, userOverrides }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.blob()
+}
+
 export async function generateDealSummary(extractedData) {
   const res = await fetch(`${BASE_URL}/ipp/deal-summary`, {
     method: 'POST',

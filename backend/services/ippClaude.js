@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PDFDocument } from 'pdf-lib'
-import { buildIppExtractionPrompt, buildTenantLeaseExtractionPrompt, buildRentRollExtractionPrompt, buildExpenseFieldExtractionPrompt, buildDealSummaryPrompt } from '../utils/ippExtractionPrompt.js'
+import { buildIppExtractionPrompt, buildTenantLeaseExtractionPrompt, buildRentRollExtractionPrompt, buildExpenseFieldExtractionPrompt, buildDealSummaryPrompt, buildExcelCommentPrompt } from '../utils/ippExtractionPrompt.js'
 import { safeParseJson } from './claude.js'
 
 const MAX_PDF_PAGES = 100
@@ -173,6 +173,16 @@ export async function extractIppExpenseField(file, fieldDescription) {
   })
 
   if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
+  return safeParseJson(response.content[0].text)
+}
+
+export async function generateIppExcelComments(fields) {
+  const response = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: buildExcelCommentPrompt(fields) }],
+  })
+  if (!response?.content?.length) throw new Error('Empty response from Claude')
   return safeParseJson(response.content[0].text)
 }
 

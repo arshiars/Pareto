@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useIPP } from '../../context/IPPContext.jsx'
-import { extractTenantLease, extractRentRollDocument, extractExpenseField, generateDealSummary } from '../../services/ippApi.js'
+import { extractTenantLease, extractRentRollDocument, extractExpenseField, generateDealSummary, exportIppExcel } from '../../services/ippApi.js'
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
@@ -96,7 +96,7 @@ function Row({ label, extracted, overrideKey, type = 'currency', indent = false,
     setEditing(false)
   }
 
-  const display = type === 'pct' ? PCT(value) : type === 'text' ? value : CAD(value)
+  const display = type === 'pct' ? PCT(value) : type === 'text' ? value : type === 'number' ? (value != null ? Number(value).toLocaleString('en-CA') : null) : CAD(value)
 
   return (
     <tr className="group/row border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors">
@@ -593,9 +593,9 @@ function AcquisitionSection({ acquisition, save }) {
     { label: 'Land Value',              field: 'landValue' },
     { label: 'DCs and Levies',          field: 'dcsAndLevies' },
     { label: 'Hard Costs',              field: 'hardCosts' },
-    { label: 'Contingency',             field: 'contingencyPct',      type: 'pct' },
+    { label: 'Contingency',             field: 'contingency' },
     { label: 'Soft Costs',              field: 'softCosts' },
-    { label: 'Dev. Management Fee',     field: 'devManagementFeePct', type: 'pct' },
+    { label: 'Dev. Management Fee',     field: 'devManagementFee' },
     { label: 'Financing Costs',         field: 'financingCosts' },
     { label: 'Total Budget',            field: 'totalBudget' },
     { label: 'Total KingSett Exposure', field: 'totalKingsettExposure' },
@@ -644,6 +644,26 @@ const EXPENSE_FIELD_DESCRIPTIONS = {
   'expenses.otherRecoverableExpenses': 'annual other recoverable expenses in CAD',
   'expenses.managementFee':            'annual property management fee in CAD',
   'expenses.structuralReserve':        'annual structural reserve or capital reserve amount in CAD',
+}
+
+function PropertyDetailsSection({ propertyInfo }) {
+  const rows = [
+    { label: 'Address',     field: 'propertyInfo.address',   type: 'text' },
+    { label: 'Site Area (acres)', field: 'propertyInfo.siteArea', type: 'number' },
+    { label: 'Year Built',  field: 'propertyInfo.yearBuilt',  type: 'number' },
+    { label: 'Stories',     field: 'propertyInfo.stories',    type: 'number' },
+    { label: 'Buildings',   field: 'propertyInfo.buildings',  type: 'number' },
+    { label: 'Parking Stalls', field: 'propertyInfo.parking', type: 'number' },
+  ]
+  return (
+    <table className="w-full">
+      <tbody>
+        {rows.map(({ label, field, type }) => (
+          <Row key={field} label={label} extracted={propertyInfo?.[field.split('.')[1]]} overrideKey={field} type={type} />
+        ))}
+      </tbody>
+    </table>
+  )
 }
 
 function DealSummarySection({ extractedData }) {
@@ -771,7 +791,9 @@ function DealSummarySection({ extractedData }) {
 
 export default function Step2Review({ onBack }) {
   const { state: { extractedData, userOverrides }, setOverride, reset } = useIPP()
-  const [uploadingExpense, setUploadingExpense] = useState(null) // overrideKey of field being uploaded
+  const [uploadingExpense, setUploadingExpense] = useState(null)
+  const [exporting,        setExporting]        = useState(false)
+  const [exportError,      setExportError]      = useState(null)
   const expenseFileInputRef = useRef(null)
   const pendingExpenseKey   = useRef(null)
 
@@ -782,6 +804,26 @@ export default function Step2Review({ onBack }) {
 
   function save(key) { return (val) => setOverride(key, val) }
   function saveTenant(idx, field, val) { setOverride(`tenants.${idx}.${field}`, val) }
+
+  async function handleExport() {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const blob = await exportIppExcel(extractedData, userOverrides)
+      const addr = userOverrides['propertyInfo.address'] ?? extractedData?.propertyInfo?.address?.value ?? 'Property'
+      const filename = `IPP - ${addr}.xlsx`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportError(err.message)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   function triggerExpenseUpload(overrideKey) {
     pendingExpenseKey.current = overrideKey
@@ -835,6 +877,11 @@ export default function Step2Review({ onBack }) {
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent/30 inline-block" />Manual override</span>
         <span className="flex items-center gap-1.5"><span className="text-[#dddddd] font-bold">—</span>Not found</span>
       </div>
+
+      {/* ── Property Details ── */}
+      <Collapsible title="Property Details">
+        <PropertyDetailsSection propertyInfo={propertyInfo} />
+      </Collapsible>
 
       {/* ── NOI Waterfall ── */}
       <div className="bg-white border border-border rounded-sm overflow-hidden">
@@ -944,6 +991,41 @@ export default function Step2Review({ onBack }) {
 
       {/* ── Deal Summary & Key Risks ── */}
       <DealSummarySection extractedData={extractedData} />
+
+      {/* ── Export to Excel ── */}
+      <div className="bg-white border border-border rounded-sm px-5 py-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-primary">Export to Excel</p>
+          <p className="text-[11px] text-[#aaaaaa] mt-0.5">Populates the IPP underwriting template with all inputs above</p>
+          {exportError && <p className="text-[11px] text-error mt-1">{exportError}</p>}
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-semibold transition-colors ${
+            exporting
+              ? 'bg-primary/40 text-white cursor-wait'
+              : 'bg-primary text-white hover:bg-primary/85'
+          }`}
+        >
+          {exporting ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              Exporting…
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download Excel
+            </>
+          )}
+        </button>
+      </div>
 
     </div>
   )

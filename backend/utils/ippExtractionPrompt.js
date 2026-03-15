@@ -10,7 +10,8 @@ IMPORTANT: Every leaf field must be an object with two keys:
 For monetary amounts, "value" must be a number with no $ signs or commas.
 For percentages, "value" must be a decimal (e.g., 0.05 for 5%).
 For dates, "value" must be a string (YYYY-MM-DD preferred; use whatever form is in the document).
-For text fields (address, stories, buildings, parking, vacant, renewalOption, rentSteps), "value" is a string.
+For text fields (address, vacant, renewalOption, rentSteps), "value" is a string.
+For numeric fields (stories, buildings, parking, siteArea, yearBuilt), "value" is a number.
 All dollar amounts are annual unless obviously monthly — if monthly, convert to annual by multiplying by 12.
 
 Return exactly this JSON structure:
@@ -18,6 +19,8 @@ Return exactly this JSON structure:
 {
   "propertyInfo": {
     "address":   { "value": null, "source": null },
+    "siteArea":  { "value": null, "source": null },
+    "yearBuilt": { "value": null, "source": null },
     "stories":   { "value": null, "source": null },
     "buildings": { "value": null, "source": null },
     "parking":   { "value": null, "source": null },
@@ -58,9 +61,9 @@ Return exactly this JSON structure:
     "landValue":               { "value": null, "source": null },
     "dcsAndLevies":            { "value": null, "source": null },
     "hardCosts":               { "value": null, "source": null },
-    "contingencyPct":          { "value": null, "source": null },
+    "contingency":             { "value": null, "source": null },
     "softCosts":               { "value": null, "source": null },
-    "devManagementFeePct":     { "value": null, "source": null },
+    "devManagementFee":        { "value": null, "source": null },
     "financingCosts":          { "value": null, "source": null },
     "totalBudget":             { "value": null, "source": null },
     "totalKingsettExposure":   { "value": null, "source": null },
@@ -96,7 +99,13 @@ Additional rules:
 - "rentSteps" value is a string describing rent escalations/steps, e.g. "3% annual CPI" or "Year 3: $26 psf, Year 6: $28 psf"
 - "tiAmount" value is tenant improvement allowance in dollars (number)
 - "lcAmount" value is leasing commission in dollars (number)
-- "contingencyPct" and "devManagementFeePct" values are decimals
+- "siteArea" value is the site/lot area in acres (number)
+- "yearBuilt" value is the 4-digit construction year (number)
+- "stories" value is the number of storeys (number)
+- "buildings" value is the number of buildings on site (number)
+- "parking" value is the total number of parking stalls (number)
+- "contingency" value is the contingency dollar amount (number, not a percentage)
+- "devManagementFee" value is the development management fee dollar amount (number, not a percentage)
 - If a document label hint is provided (e.g., "Broker CIM", "Rent Roll"), use it as the source string for fields you extract from that document
 - Extract all tenants you can find, even if only partial information is available
 - Be concise with source strings: "Broker CIM", "Rent Roll", "Operating Statement", "Tax Bill", "Insurance Bill", "Utility Bill" are preferred`
@@ -186,6 +195,25 @@ Rules:
 - notes: a concise plain-text summary of ALL material lease provisions that affect deal risk or value. MUST include (if present): rent step-up schedule with specific amounts/dates, TI allowance context (e.g. paid over what period), leasing commission structure, co-tenancy clauses, early termination or kick-out rights, ROFR/ROFO provisions, assignment/subletting restrictions, personal guarantees, gross vs. net lease structure, any unusual or landlord-unfriendly clauses. Write in point-form sentences. If nothing material beyond standard terms, return null.
 - All monetary values are plain numbers — no $, no commas
 - Use "Lease" as the source string for every field that was found`
+}
+
+export function buildExcelCommentPrompt(fields) {
+  return `You are a commercial real estate underwriting analyst at KingSett Capital populating an IPP underwriting Excel model.
+
+For each field below, write a comment to place beside that cell in the spreadsheet. Each comment must be 1–2 sentences maximum and must cover one or more of:
+- The document source the value came from (name it specifically)
+- Any assumption or conversion applied (e.g. monthly → annual, estimated from psf)
+- A reliability caveat or risk flag (e.g. stale figures, single-source, estimated)
+- If null/not found: state it was not found in uploaded documents and must be entered manually
+- If user-overridden: note it was manually entered by the user; reference the original extracted source if available
+
+Style: direct, professional, deal-memo tone. No filler. Max 2 sentences.
+
+Return ONLY a single valid JSON object — no markdown, no prose — mapping each field's "row" string key to a comment string:
+{ "3": "Extracted from Broker CIM; verify address matches the legal description on title.", "20": "...", ... }
+
+Fields:
+${JSON.stringify(fields, null, 2)}`
 }
 
 export function buildDealSummaryPrompt() {

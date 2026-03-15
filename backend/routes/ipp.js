@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { upload } from '../middleware/upload.js'
 import { extractIppFromDocuments, extractTenantFromLease, extractRentRoll, extractIppExpenseField, generateIppDealSummary } from '../services/ippClaude.js'
+import { populateIppExcel } from '../services/ippExcel.js'
 
 const router = Router()
 
@@ -64,6 +65,25 @@ router.post('/extract-tenant-lease', async (req, res) => {
   } catch (err) {
     console.error('[IPP] Tenant lease extraction error:', err.message)
     res.status(500).json({ error: err.message || 'Tenant lease extraction failed' })
+  }
+})
+
+router.post('/export-excel', async (req, res) => {
+  try {
+    const { extractedData, userOverrides = {} } = req.body
+    if (!extractedData || typeof extractedData !== 'object') {
+      return res.status(400).json({ error: 'extractedData JSON body is required' })
+    }
+    console.log('[IPP] Generating Excel export')
+    const buffer = await populateIppExcel(extractedData, userOverrides)
+    const address = userOverrides['propertyInfo.address'] ?? extractedData?.propertyInfo?.address?.value ?? 'Export'
+    const filename = `IPP - ${address}.xlsx`
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
+    res.send(Buffer.from(buffer))
+  } catch (err) {
+    console.error('[IPP] Excel export error:', err.message)
+    res.status(500).json({ error: err.message || 'Excel export failed' })
   }
 })
 
