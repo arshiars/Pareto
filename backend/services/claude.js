@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PDFDocument } from 'pdf-lib'
 import { buildExtractionPrompt, buildResearchPrompt, buildFieldExtractionPrompt, buildPptSuggestionsPrompt } from '../utils/extractionPrompt.js'
+import { buildSqlGenerationPrompt, buildAnalysisPrompt } from '../utils/cmhcQueryPrompts.js'
 
 const MAX_PDF_PAGES = 100
 
@@ -202,5 +203,32 @@ export async function researchField(fieldName, propertyContext) {
 
   if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
   return safeParseJson(response.content[0].text)
+}
+
+// ── Step 1: Haiku generates SQL from the question ────────────────────────────
+export async function generateSqlQuery(question) {
+  const prompt = await buildSqlGenerationPrompt(question)
+  const response = await getClient().messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }],
+  })
+  if (!response?.content?.length) throw new Error('No response from SQL generation model')
+  let sql = response.content[0].text.trim()
+  // Strip any markdown fences the model might add despite instructions
+  sql = sql.replace(/^```sql\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+  return sql
+}
+
+// ── Step 2: Sonnet analyzes the query results and answers ─────────────────────
+export async function analyzeQueryResults(question, sql, results) {
+  const prompt = await buildAnalysisPrompt(question, sql, results)
+  const response = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: prompt }],
+  })
+  if (!response?.content?.length) throw new Error('No response from analysis model')
+  return response.content[0].text
 }
 

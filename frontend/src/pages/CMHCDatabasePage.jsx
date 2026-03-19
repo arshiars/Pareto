@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../services/supabase.js'
+import { queryLoanDatabase } from '../services/api.js'
 import LoanDetailPage from './LoanDetailPage.jsx'
 import { formatCurrency, formatPercent } from '../utils/formatters.js'
 
@@ -272,6 +273,11 @@ export default function CMHCDatabasePage({ onBack }) {
   const [sortKey, setSortKey] = useState('funding_date')
   const [sortDir, setSortDir] = useState('desc')
 
+  // Q&A
+  const [qaHistory, setQaHistory] = useState([])
+  const [qaInput, setQaInput] = useState('')
+  const [qaLoading, setQaLoading] = useState(false)
+
   // ── Fetch on mount ──
   useEffect(() => {
     supabase.from('cmhc_loans').select('*').order('funding_date', { ascending: false })
@@ -358,6 +364,25 @@ export default function CMHCDatabasePage({ onBack }) {
   function toggleAssetType(a) {
     setSelAssetTypes(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a])
     setPage(1)
+  }
+
+  // ── Q&A ──
+  async function handleQuery(e) {
+    e.preventDefault()
+    const q = qaInput.trim()
+    if (!q || qaLoading) return
+    setQaInput('')
+    setQaLoading(true)
+    const entry = { question: q, answer: null, sql: null, rowCount: null, error: null }
+    setQaHistory(prev => [entry, ...prev])
+    try {
+      const { answer, sql, rowCount } = await queryLoanDatabase(q)
+      setQaHistory(prev => prev.map((h, i) => i === 0 ? { ...h, answer, sql, rowCount } : h))
+    } catch (err) {
+      setQaHistory(prev => prev.map((h, i) => i === 0 ? { ...h, error: err.message } : h))
+    } finally {
+      setQaLoading(false)
+    }
   }
 
   // ── Excel import ──
@@ -639,7 +664,144 @@ export default function CMHCDatabasePage({ onBack }) {
             )}
           </div>
         </div>
+
+        {/* ── Q&A Panel ── */}
+        {!loading && loans.length > 0 && (
+          <div className="border-t border-border pt-6 mt-2">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-7 h-7 rounded-sm bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-primary">Ask the Database</h3>
+                <p className="text-xs text-[#999999]">
+                  Queries the full database · Haiku generates SQL · Sonnet analyzes results
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleQuery} className="flex gap-3">
+              <input
+                type="text"
+                value={qaInput}
+                onChange={e => setQaInput(e.target.value)}
+                placeholder="e.g. What is the average cap rate for BC properties? Which deals have the highest property taxes per unit?"
+                disabled={qaLoading}
+                className="flex-1 text-sm border border-border rounded-sm px-4 py-2.5 focus:outline-none focus:border-primary placeholder-[#bbbbbb] disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!qaInput.trim() || qaLoading}
+                className="px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-sm hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0"
+              >
+                {qaLoading ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {qaLoading ? 'Thinking…' : 'Ask'}
+              </button>
+            </form>
+
+            {qaHistory.length > 0 && (
+              <div className="mt-4 space-y-4">
+                {qaHistory.map((h, i) => (
+                  <div key={i} className="bg-white border border-border rounded-sm overflow-hidden">
+                    {/* Question header */}
+                    <div className="px-5 py-3 bg-surface border-b border-border flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-primary">{h.question}</p>
+                      {h.rowCount !== null && (
+                        <span className="text-xs text-[#999999] flex-shrink-0 mt-0.5">{h.rowCount} row{h.rowCount !== 1 ? 's' : ''} queried</span>
+                      )}
+                    </div>
+
+                    {/* Body */}
+                    <div className="px-5 py-4">
+                      {h.answer === null && h.error === null ? (
+                        <div className="flex items-center gap-2 text-[#777777] text-sm">
+                          <svg className="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                          </svg>
+                          Generating query…
+                        </div>
+                      ) : h.error ? (
+                        <p className="text-sm text-red-600">{h.error}</p>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="text-sm text-[#333333] leading-relaxed">
+                            <MarkdownAnswer text={h.answer} />
+                          </div>
+                          {/* Collapsible SQL */}
+                          {h.sql && (
+                            <details className="group">
+                              <summary className="text-xs text-[#999999] cursor-pointer hover:text-primary select-none flex items-center gap-1">
+                                <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                View generated SQL
+                              </summary>
+                              <pre className="mt-2 p-3 bg-surface rounded-sm text-xs font-mono text-[#555555] overflow-x-auto whitespace-pre-wrap border border-border">
+                                {h.sql}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   )
+}
+
+// Minimal markdown renderer for bold, bullets, and line breaks
+function MarkdownAnswer({ text }) {
+  const lines = text.split('\n')
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-2" />
+        // Bullet lines
+        if (line.match(/^[-*•]\s/)) {
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="text-accent mt-0.5 flex-shrink-0">•</span>
+              <span dangerouslySetInnerHTML={{ __html: renderInline(line.replace(/^[-*•]\s/, '')) }} />
+            </div>
+          )
+        }
+        // Numbered lines
+        if (line.match(/^\d+\.\s/)) {
+          const [num, ...rest] = line.split(/\.\s(.+)/)
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="text-[#999999] flex-shrink-0 font-mono text-xs mt-0.5">{num}.</span>
+              <span dangerouslySetInnerHTML={{ __html: renderInline(rest.join('. ')) }} />
+            </div>
+          )
+        }
+        return <p key={i} dangerouslySetInnerHTML={{ __html: renderInline(line) }} />
+      })}
+    </div>
+  )
+}
+
+function renderInline(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-primary font-semibold">$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code class="bg-surface px-1 rounded text-xs font-mono">$1</code>')
 }

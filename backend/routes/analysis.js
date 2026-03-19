@@ -3,7 +3,8 @@ import { readFile } from 'fs/promises'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { upload } from '../middleware/upload.js'
-import { extractFromDocuments, extractField, researchField, generatePptSuggestions } from '../services/claude.js'
+import { extractFromDocuments, extractField, researchField, generatePptSuggestions, generateSqlQuery, analyzeQueryResults } from '../services/claude.js'
+import { runQuery } from '../services/database.js'
 import { populateExcelTemplate } from '../services/excel.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -98,6 +99,30 @@ router.post('/populate-excel', async (req, res) => {
   } catch (err) {
     console.error('Excel population error:', err.message)
     res.status(500).json({ error: err.message || 'Excel population failed' })
+  }
+})
+
+router.post('/database-query', async (req, res) => {
+  try {
+    const { question } = req.body
+    if (!question) return res.status(400).json({ error: 'question is required' })
+
+    // Step 1 — Haiku generates SQL
+    console.log(`[DB Query] Question: "${question}"`)
+    const sql = await generateSqlQuery(question)
+    console.log(`[DB Query] SQL: ${sql.substring(0, 150)}`)
+
+    // Step 2 — Execute SQL against Supabase
+    const results = await runQuery(sql, 150)
+    console.log(`[DB Query] Rows returned: ${results.rowCount}`)
+
+    // Step 3 — Sonnet analyzes results and answers
+    const answer = await analyzeQueryResults(question, sql, results)
+
+    res.json({ answer, sql, rowCount: results.rowCount })
+  } catch (err) {
+    console.error('[DB Query] Error:', err.message)
+    res.status(500).json({ error: err.message || 'Query failed' })
   }
 })
 
