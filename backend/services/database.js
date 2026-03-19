@@ -37,13 +37,17 @@ async function getLoans() {
   return data
 }
 
-// Sanitize SQL: only allow SELECT statements
+// Sanitize SQL: only allow SELECT statements — enforced server-side regardless of what the model generates
 function assertSafeQuery(sql) {
   const lower = sql.toLowerCase().trim()
   if (!lower.startsWith('select')) {
     throw new Error('Only SELECT statements are permitted')
   }
-  const blocked = ['insert', 'update', 'delete', 'drop', 'alter', 'create', 'truncate', 'grant', 'revoke']
+  const blocked = [
+    'insert', 'update', 'delete', 'drop', 'alter', 'create', 'truncate',
+    'grant', 'revoke', 'execute', 'exec', 'call', 'merge', 'replace',
+    'into', 'set', 'attach', 'detach', 'load',
+  ]
   for (const kw of blocked) {
     if (new RegExp(`\\b${kw}\\b`, 'i').test(sql)) {
       throw new Error(`Blocked keyword in query: ${kw}`)

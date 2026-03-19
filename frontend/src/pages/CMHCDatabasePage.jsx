@@ -253,6 +253,7 @@ const PER_PAGE = 20
 
 export default function CMHCDatabasePage({ onBack }) {
   const fileInputRef = useRef(null)
+  const qaRef = useRef(null)
   const [loans, setLoans] = useState([])
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
@@ -548,6 +549,17 @@ export default function CMHCDatabasePage({ onBack }) {
                 className="w-full text-sm border border-border rounded-sm px-3 py-1.5 focus:outline-none focus:border-primary" />
             </div>
 
+            {/* Ask AI shortcut */}
+            <button
+              onClick={() => qaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary border border-primary/30 bg-primary/5 rounded-sm hover:bg-primary/10 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+              Ask AI about database
+            </button>
+
             {/* Clear */}
             {hasFilters && (
               <button
@@ -667,7 +679,7 @@ export default function CMHCDatabasePage({ onBack }) {
 
         {/* ── Q&A Panel ── */}
         {!loading && loans.length > 0 && (
-          <div className="border-t border-border pt-6 mt-2">
+          <div ref={qaRef} className="border-t border-border pt-6 mt-2">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-7 h-7 rounded-sm bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -677,7 +689,7 @@ export default function CMHCDatabasePage({ onBack }) {
               <div>
                 <h3 className="text-sm font-bold text-primary">Ask the Database</h3>
                 <p className="text-xs text-[#999999]">
-                  Queries the full database · Haiku generates SQL · Sonnet analyzes results
+                  Queries the full loan database · Powered by Claude Sonnet
                 </p>
               </div>
             </div>
@@ -767,41 +779,133 @@ export default function CMHCDatabasePage({ onBack }) {
   )
 }
 
-// Minimal markdown renderer for bold, bullets, and line breaks
-function MarkdownAnswer({ text }) {
-  const lines = text.split('\n')
-  return (
-    <div className="space-y-1.5">
-      {lines.map((line, i) => {
-        if (!line.trim()) return <div key={i} className="h-2" />
-        // Bullet lines
-        if (line.match(/^[-*•]\s/)) {
-          return (
-            <div key={i} className="flex gap-2">
-              <span className="text-accent mt-0.5 flex-shrink-0">•</span>
-              <span dangerouslySetInnerHTML={{ __html: renderInline(line.replace(/^[-*•]\s/, '')) }} />
-            </div>
-          )
-        }
-        // Numbered lines
-        if (line.match(/^\d+\.\s/)) {
-          const [num, ...rest] = line.split(/\.\s(.+)/)
-          return (
-            <div key={i} className="flex gap-2">
-              <span className="text-[#999999] flex-shrink-0 font-mono text-xs mt-0.5">{num}.</span>
-              <span dangerouslySetInnerHTML={{ __html: renderInline(rest.join('. ')) }} />
-            </div>
-          )
-        }
-        return <p key={i} dangerouslySetInnerHTML={{ __html: renderInline(line) }} />
-      })}
-    </div>
-  )
-}
-
 function renderInline(text) {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-primary font-semibold">$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code class="bg-surface px-1 rounded text-xs font-mono">$1</code>')
+}
+
+function MarkdownAnswer({ text }) {
+  const lines = text.split('\n')
+  const elements = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (!line.trim()) {
+      elements.push(<div key={i} className="h-1.5" />)
+      i++; continue
+    }
+
+    // H2
+    if (line.startsWith('## ')) {
+      elements.push(
+        <h2 key={i} className="text-sm font-bold text-primary mt-4 mb-1 first:mt-0 tracking-tight"
+          dangerouslySetInnerHTML={{ __html: renderInline(line.slice(3)) }} />
+      )
+      i++; continue
+    }
+
+    // H3
+    if (line.startsWith('### ')) {
+      elements.push(
+        <h3 key={i} className="text-xs font-bold text-[#555555] uppercase tracking-wider mt-3 mb-1"
+          dangerouslySetInnerHTML={{ __html: renderInline(line.slice(4)) }} />
+      )
+      i++; continue
+    }
+
+    // Table — collect consecutive | lines
+    if (line.startsWith('|')) {
+      const tableLines = []
+      while (i < lines.length && lines[i].startsWith('|')) {
+        tableLines.push(lines[i]); i++
+      }
+      const parseRow = (l) => l.split('|').slice(1, -1).map(c => c.trim())
+      const isDivider = (l) => /^\|[\s\-:|]+\|$/.test(l)
+      const nonDivider = tableLines.filter(l => !isDivider(l))
+      if (nonDivider.length >= 2) {
+        const headers = parseRow(nonDivider[0])
+        const dataRows = nonDivider.slice(1).map(parseRow)
+        elements.push(
+          <div key={`t${i}`} className="overflow-x-auto my-2 rounded-sm border border-border">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-surface">
+                  {headers.map((h, hi) => (
+                    <th key={hi} className="text-left px-3 py-2 border-b border-border font-semibold text-[#777777] uppercase tracking-wider whitespace-nowrap">
+                      <span dangerouslySetInnerHTML={{ __html: renderInline(h) }} />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, ri) => (
+                  <tr key={ri} className={ri % 2 === 1 ? 'bg-surface/60' : 'bg-white'}>
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="px-3 py-2 border-b border-border/50 text-[#333333] whitespace-nowrap">
+                        <span dangerouslySetInnerHTML={{ __html: renderInline(cell) }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+      continue
+    }
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      elements.push(
+        <div key={i} className="border-l-2 border-primary/30 pl-3 py-1 my-1 bg-primary/5 rounded-r-sm">
+          <p className="text-xs text-[#555555] italic"
+            dangerouslySetInnerHTML={{ __html: renderInline(line.slice(2)) }} />
+        </div>
+      )
+      i++; continue
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} className="border-border my-3" />)
+      i++; continue
+    }
+
+    // Bullet
+    if (/^[-*•]\s/.test(line)) {
+      elements.push(
+        <div key={i} className="flex gap-2">
+          <span className="text-primary/60 mt-0.5 flex-shrink-0 font-bold text-xs">•</span>
+          <span className="text-sm text-[#333333]" dangerouslySetInnerHTML={{ __html: renderInline(line.replace(/^[-*•]\s/, '')) }} />
+        </div>
+      )
+      i++; continue
+    }
+
+    // Numbered list
+    const numMatch = line.match(/^(\d+)\.\s(.+)/)
+    if (numMatch) {
+      elements.push(
+        <div key={i} className="flex gap-2">
+          <span className="text-[#999999] flex-shrink-0 font-mono text-xs mt-0.5 w-5 text-right">{numMatch[1]}.</span>
+          <span className="text-sm text-[#333333]" dangerouslySetInnerHTML={{ __html: renderInline(numMatch[2]) }} />
+        </div>
+      )
+      i++; continue
+    }
+
+    // Paragraph
+    elements.push(
+      <p key={i} className="text-sm text-[#333333] leading-relaxed"
+        dangerouslySetInnerHTML={{ __html: renderInline(line) }} />
+    )
+    i++
+  }
+
+  return <div className="space-y-1.5">{elements}</div>
 }
