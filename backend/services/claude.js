@@ -209,7 +209,7 @@ export async function researchField(fieldName, propertyContext) {
 export async function generateSqlQuery(question) {
   const prompt = await buildSqlGenerationPrompt(question)
   const response = await getClient().messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [{ role: 'user', content: prompt }],
   })
