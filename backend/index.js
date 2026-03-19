@@ -3,9 +3,13 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import crypto from 'crypto'
 import dotenv from 'dotenv'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 import analysisRouter from './routes/analysis.js'
+import ippRouter from './routes/ipp.js'
 
-dotenv.config()
+const __dirname = dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: join(__dirname, '../.env') })
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -40,7 +44,7 @@ app.use(cors({
   exposedHeaders: ['X-Population-Report'],
 }))
 app.use(cookieParser())
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' })
@@ -93,6 +97,17 @@ app.use('/api/analysis', (req, res, next) => {
 })
 
 app.use('/api/analysis', analysisRouter)
+
+// Protect /api/ipp routes with the same signed cookie token
+app.use('/api/ipp', (req, res, next) => {
+  if (!process.env.GATEWAY_PASSWORD) return next()
+  const token = req.cookies?.gateway_token
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+  const payload = verifyToken(token)
+  if (!payload || !payload.granted) return res.status(401).json({ error: 'Unauthorized' })
+  return next()
+})
+app.use('/api/ipp', ippRouter)
 
 // Global JSON error handler — must be last, must have 4 args
 app.use((err, _req, res, _next) => {

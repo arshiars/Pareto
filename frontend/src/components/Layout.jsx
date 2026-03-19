@@ -1,4 +1,4 @@
-export default function Layout({ children }) {
+export default function Layout({ children, subtitle = 'CMHC Underwriting' }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="bg-white border-b border-border sticky top-0 z-40">
@@ -6,7 +6,7 @@ export default function Layout({ children }) {
           <div className="flex items-center gap-4">
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">CMHC Underwriting</p>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">{subtitle}</p>
             </div>
             <div className="h-6 w-px bg-border" />
             <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">Deal Processor</span>

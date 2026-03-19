@@ -2,9 +2,13 @@ import { useState, useEffect } from 'react'
 import { AnalysisProvider, useAnalysis } from './context/AnalysisContext.jsx'
 import Layout from './components/Layout.jsx'
 import Gateway from './components/Gateway.jsx'
+import SelectionPage from './pages/SelectionPage.jsx'
 import UploadPage from './pages/UploadPage.jsx'
 import ReviewPage from './pages/ReviewPage.jsx'
 import ExcelPage from './pages/ExcelPage.jsx'
+import ConventionalPage from './pages/ConventionalPage.jsx'
+import IPPPage from './pages/IPPPage.jsx'
+import CMHCDatabasePage from './pages/CMHCDatabasePage.jsx'
 import { checkAuth } from './services/api.js'
 
 function AppContent() {
@@ -22,6 +26,7 @@ function AppContent() {
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [mode, setMode] = useState(null) // null | 'cmhc' | 'conventional'
 
   useEffect(() => {
     checkAuth().then((ok) => {
@@ -34,6 +39,22 @@ export default function App() {
 
   if (!authenticated) {
     return <Gateway onAuthenticated={() => setAuthenticated(true)} />
+  }
+
+  if (mode === null) {
+    return <SelectionPage onSelect={setMode} />
+  }
+
+  if (mode === 'conventional') {
+    return <ConventionalPage onSelect={(sub) => setMode(`conventional/${sub}`)} onBack={() => setMode(null)} />
+  }
+
+  if (mode === 'conventional/ipp') {
+    return <IPPPage onBack={() => setMode('conventional')} />
+  }
+
+  if (mode === 'cmhc-database') {
+    return <CMHCDatabasePage onBack={() => setMode(null)} />
   }
 
   return (

@@ -97,3 +97,14 @@ export async function researchField(fieldName, propertyContext) {
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
+
+export async function queryLoanDatabase(question) {
+  const res = await fetch(`${BASE_URL}/analysis/database-query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ question }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
