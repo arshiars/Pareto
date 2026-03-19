@@ -32,8 +32,10 @@ Rules:
 - For "top N" questions, use ORDER BY col DESC LIMIT N
 - For percentage value comparisons, use decimals (cap rate > 5% → cap_rate > 0.05)
 - DO NOT use PostgreSQL-specific syntax: no EXTRACT(), no TO_CHAR(), no ILIKE, no ::cast, no NULLIF(), no COALESCE()
+- DO NOT use window functions: no OVER(), no PARTITION BY, no RANK(), no ROW_NUMBER() — alasql does not support them
+- If you need an aggregate alongside row-level data (e.g. AVG for the whole group next to each row), use a subquery: SELECT ..., (SELECT ROUND(AVG(col)) FROM cmhc_loans WHERE ...) AS avg_col FROM cmhc_loans WHERE ...
 - For date filtering use simple string comparison: funding_date >= '2022-01-01'
-- For case-insensitive text matching use LIKE with uppercase: UPPER(province) LIKE 'ON'
+- For case-insensitive text matching use LIKE with uppercase: UPPER(city) LIKE '%TORONTO%'
 
 Question: ${question}
 
