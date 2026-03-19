@@ -8,6 +8,7 @@ import ReviewPage from './pages/ReviewPage.jsx'
 import ExcelPage from './pages/ExcelPage.jsx'
 import ConventionalPage from './pages/ConventionalPage.jsx'
 import IPPPage from './pages/IPPPage.jsx'
+import CMHCDatabasePage from './pages/CMHCDatabasePage.jsx'
 import { checkAuth } from './services/api.js'
 
 function AppContent() {
@@ -50,6 +51,10 @@ export default function App() {
 
   if (mode === 'conventional/ipp') {
     return <IPPPage onBack={() => setMode('conventional')} />
+  }
+
+  if (mode === 'cmhc-database') {
+    return <CMHCDatabasePage onBack={() => setMode(null)} />
   }
 
   return (

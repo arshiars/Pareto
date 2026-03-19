@@ -64,6 +64,31 @@ export default function SelectionPage({ onSelect }) {
             </div>
           </button>
         </div>
+
+        <div className="mt-8 w-full max-w-2xl">
+          <button
+            onClick={() => onSelect('cmhc-database')}
+            className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 rounded-sm bg-surface flex items-center justify-center group-hover:bg-primary/10 transition-colors flex-shrink-0">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M4 7c0 2 1 3 3 3h10c2 0 3-1 3-3M4 7c0-2 1-3 3-3h10c2 0 3 1 3 3" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <span className="text-primary font-semibold text-sm">Approved CMHC Loan Database</span>
+                <p className="text-[#777777] text-xs mt-0.5">View and query approved CMHC loan records</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
+              Open
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+        </div>
       </main>
     </div>
   )
