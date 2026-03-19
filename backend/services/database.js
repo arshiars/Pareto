@@ -1,10 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 import alasql from 'alasql'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+let supabase = null
+function getSupabase() {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+  }
+  return supabase
+}
 
 // In-memory cache — loans fetched once and reused for subsequent queries
 let cachedLoans = null
@@ -18,7 +24,7 @@ async function getLoans() {
   }
 
   console.log('[DB] Fetching loans from Supabase...')
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('cmhc_loans')
     .select('*')
     .order('funding_date', { ascending: false })
