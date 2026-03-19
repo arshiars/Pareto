@@ -1,5 +1,17 @@
 const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api'
 
+// Token stored in localStorage as fallback for cross-origin cookie issues
+const TOKEN_KEY = 'gateway_token'
+
+function getStoredToken() {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+function authHeaders(extra = {}) {
+  const token = getStoredToken()
+  return token ? { Authorization: `Bearer ${token}`, ...extra } : extra
+}
+
 async function parseError(res) {
   try {
     const data = await res.json()
@@ -11,7 +23,10 @@ async function parseError(res) {
 }
 
 export async function checkAuth() {
-  const res = await fetch(`${BASE_URL}/auth/check`, { credentials: 'include' })
+  const res = await fetch(`${BASE_URL}/auth/check`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
   if (!res.ok) return false
   const data = await res.json()
   return data.authenticated
@@ -25,7 +40,10 @@ export async function verifyPassword(password) {
     body: JSON.stringify({ password }),
   })
   if (!res.ok) throw new Error(await parseError(res))
-  return res.json()
+  const data = await res.json()
+  // Store token in localStorage so it can be sent as Authorization header
+  if (data.token) localStorage.setItem(TOKEN_KEY, data.token)
+  return data
 }
 
 export async function extractDocuments(files, labels = []) {
@@ -36,6 +54,7 @@ export async function extractDocuments(files, labels = []) {
   const res = await fetch(`${BASE_URL}/analysis/extract`, {
     method: 'POST',
     credentials: 'include',
+    headers: authHeaders(),
     body: formData,
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -50,6 +69,7 @@ export async function extractFieldFromDocument(file, fieldDescription) {
   const res = await fetch(`${BASE_URL}/analysis/extract-field`, {
     method: 'POST',
     credentials: 'include',
+    headers: authHeaders(),
     body: formData,
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -63,6 +83,7 @@ export async function populateExcel(noiData) {
   const res = await fetch(`${BASE_URL}/analysis/populate-excel`, {
     method: 'POST',
     credentials: 'include',
+    headers: authHeaders(),
     body: formData,
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -79,7 +100,7 @@ export async function populateExcel(noiData) {
 export async function fetchPptSuggestions(extractedData) {
   const res = await fetch(`${BASE_URL}/analysis/ppt-suggestions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     credentials: 'include',
     body: JSON.stringify({ extractedData }),
   })
@@ -90,7 +111,7 @@ export async function fetchPptSuggestions(extractedData) {
 export async function researchField(fieldName, propertyContext) {
   const res = await fetch(`${BASE_URL}/analysis/research`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     credentials: 'include',
     body: JSON.stringify({ fieldName, propertyContext }),
   })
@@ -101,7 +122,7 @@ export async function researchField(fieldName, propertyContext) {
 export async function queryLoanDatabase(question) {
   const res = await fetch(`${BASE_URL}/analysis/database-query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     credentials: 'include',
     body: JSON.stringify({ question }),
   })

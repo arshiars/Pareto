@@ -50,11 +50,18 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' })
 })
 
+// Extract token from cookie OR Authorization header (Bearer token)
+function extractToken(req) {
+  const authHeader = req.headers['authorization']
+  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7)
+  return req.cookies?.gateway_token || null
+}
+
 app.get('/api/auth/check', (req, res) => {
   if (!process.env.GATEWAY_PASSWORD) {
     return res.json({ authenticated: true })
   }
-  const token = req.cookies?.gateway_token
+  const token = extractToken(req)
   if (token && verifyToken(token)) {
     return res.json({ authenticated: true })
   }
@@ -78,14 +85,15 @@ app.post('/api/auth/verify', (req, res) => {
     sameSite: isProduction ? 'none' : 'lax',
     maxAge: SEVEN_DAYS_MS,
   })
-  return res.json({ success: true })
+  // Also return token in body so frontend can store in localStorage as fallback
+  return res.json({ success: true, token })
 })
 
-// Protect all /api/analysis routes with signed cookie token
+// Protect all /api/analysis routes — accepts cookie or Authorization header
 app.use('/api/analysis', (req, res, next) => {
   if (!process.env.GATEWAY_PASSWORD) return next()
 
-  const token = req.cookies?.gateway_token
+  const token = extractToken(req)
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
   const payload = verifyToken(token)
@@ -98,10 +106,10 @@ app.use('/api/analysis', (req, res, next) => {
 
 app.use('/api/analysis', analysisRouter)
 
-// Protect /api/ipp routes with the same signed cookie token
+// Protect /api/ipp routes — accepts cookie or Authorization header
 app.use('/api/ipp', (req, res, next) => {
   if (!process.env.GATEWAY_PASSWORD) return next()
-  const token = req.cookies?.gateway_token
+  const token = extractToken(req)
   if (!token) return res.status(401).json({ error: 'Unauthorized' })
   const payload = verifyToken(token)
   if (!payload || !payload.granted) return res.status(401).json({ error: 'Unauthorized' })
