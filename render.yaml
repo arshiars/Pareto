@@ -12,7 +12,15 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false          # set manually in Render dashboard
       - key: FRONTEND_URL
-        sync: false          # set to your Render frontend URL after first deploy
+        sync: false          # e.g. https://fundus-frontend.onrender.com
+      - key: GATEWAY_PASSWORD
+        sync: false          # the password users enter to access the app
+      - key: GATEWAY_SECRET
+        sync: false          # random secret for signing auth tokens
+      - key: SUPABASE_URL
+        sync: false          # https://mdborjnavqcinrjnqqsw.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false          # Supabase service role secret key
 
   # ── Frontend ─────────────────────────────────────────────────────────────────
   - type: web
@@ -23,4 +31,8 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        sync: false          # set to your Render backend URL after first deploy
+        sync: false          # e.g. https://fundus-backend.onrender.com
+      - key: VITE_SUPABASE_URL
+        sync: false          # https://mdborjnavqcinrjnqqsw.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false          # Supabase publishable/anon key
