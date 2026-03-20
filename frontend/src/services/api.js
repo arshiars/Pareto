@@ -129,3 +129,83 @@ export async function queryLoanDatabase(question) {
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
+
+// ─── Rent Comparables ────────────────────────────────────────────────────────
+
+export async function bulkExtractAndSave(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${BASE_URL}/comparables/bulk`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+    body: formData,
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function extractRentComparables(files) {
+  const formData = new FormData()
+  files.forEach((file) => formData.append('files', file))
+  const res = await fetch(`${BASE_URL}/comparables/extract`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+    body: formData,
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function saveRentComparables(batchId, units) {
+  const res = await fetch(`${BASE_URL}/comparables/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ batchId, units }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function fetchRentComparables() {
+  const res = await fetch(`${BASE_URL}/comparables`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function renameBatchAddress(batchId, address) {
+  const res = await fetch(`${BASE_URL}/comparables/batch/${batchId}/address`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ address }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function updateRentComparable(id, fields) {
+  const res = await fetch(`${BASE_URL}/comparables/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(fields),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function deleteRentComparablesBatch(batchId) {
+  const res = await fetch(`${BASE_URL}/comparables/batch/${batchId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}

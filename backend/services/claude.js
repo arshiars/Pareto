@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { PDFDocument } from 'pdf-lib'
 import { buildExtractionPrompt, buildResearchPrompt, buildFieldExtractionPrompt, buildPptSuggestionsPrompt } from '../utils/extractionPrompt.js'
 import { buildSqlGenerationPrompt, buildAnalysisPrompt } from '../utils/cmhcQueryPrompts.js'
+import { buildRentComparablesPrompt } from '../utils/rentComparablesPrompt.js'
 
 const MAX_PDF_PAGES = 100
 
@@ -203,6 +204,30 @@ export async function researchField(fieldName, propertyContext) {
 
   if (!response?.content?.length) throw new Error('Claude returned an empty response (model may be overloaded — retry)')
   return safeParseJson(response.content[0].text)
+}
+
+// ── Rent Comparables extraction ───────────────────────────────────────────────
+
+export async function extractRentComparables(files) {
+  const results = []
+
+  for (const file of files) {
+    console.log(`[Rent Comparables] Processing: ${file.originalname}`)
+    const contentBlocks = await fileToContentBlocks(file)
+
+    const response = await getClient().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system: [{ type: 'text', text: buildRentComparablesPrompt(), cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: contentBlocks }],
+    })
+
+    if (!response?.content?.length) throw new Error(`Claude returned an empty response for ${file.originalname}`)
+    const parsed = safeParseJson(response.content[0].text)
+    results.push({ sourceFile: file.originalname, properties: parsed.properties ?? [] })
+  }
+
+  return results
 }
 
 // ── Step 1: Haiku generates SQL from the question ────────────────────────────

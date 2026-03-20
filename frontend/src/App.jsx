@@ -9,6 +9,8 @@ import ExcelPage from './pages/ExcelPage.jsx'
 import ConventionalPage from './pages/ConventionalPage.jsx'
 import IPPPage from './pages/IPPPage.jsx'
 import CMHCDatabasePage from './pages/CMHCDatabasePage.jsx'
+import ComparableAnalysisPage from './pages/ComparableAnalysisPage.jsx'
+import RentComparablesPage from './pages/RentComparablesPage.jsx'
 import { checkAuth } from './services/api.js'
 
 function AppContent() {
@@ -55,6 +57,14 @@ export default function App() {
 
   if (mode === 'cmhc-database') {
     return <CMHCDatabasePage onBack={() => setMode(null)} />
+  }
+
+  if (mode === 'comparable-analysis') {
+    return <ComparableAnalysisPage onBack={() => setMode(null)} onSelect={(sub) => setMode(`comparable-analysis/${sub}`)} />
+  }
+
+  if (mode === 'comparable-analysis/rent-comparables') {
+    return <RentComparablesPage onBack={() => setMode('comparable-analysis')} />
   }
 
   return (
