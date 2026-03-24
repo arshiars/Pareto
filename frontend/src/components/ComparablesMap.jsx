@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import MapGL, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl/mapbox'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -12,7 +12,6 @@ function fmtCurrency(val) {
   return '$' + Number(val).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
-// Haversine distance in miles between two lat/lng points
 function distanceMiles(lat1, lng1, lat2, lng2) {
   const R = 3958.8
   const dLat = (lat2 - lat1) * (Math.PI / 180)
@@ -23,7 +22,6 @@ function distanceMiles(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-// Approximate GeoJSON circle polygon for a given center + radius in miles
 function circleGeoJSON(center, radiusMiles, steps = 64) {
   const coords = []
   const latR = radiusMiles / 69.11
@@ -35,19 +33,208 @@ function circleGeoJSON(center, radiusMiles, steps = 64) {
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } }
 }
 
-export default function ComparablesMap({ units, onSelectProperty }) {
-  const [viewState, setViewState] = useState({ longitude: -79.38, latitude: 43.75, zoom: 9 })
+function staticMapUrl(lng, lat) {
+  return `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-s+3B82F6(${lng},${lat})/${lng},${lat},15,0/400x160@2x?access_token=${MAPBOX_TOKEN}`
+}
+
+// ─── Layer definitions ───────────────────────────────────────────────────────
+
+const CLUSTER_COLOR = '#3B82F6'
+
+const clusterRingLayer = {
+  id: 'cluster-ring',
+  type: 'circle',
+  source: 'properties',
+  filter: ['has', 'point_count'],
+  paint: {
+    'circle-color': CLUSTER_COLOR,
+    'circle-radius': [
+      'interpolate', ['linear'], ['get', 'point_count'],
+      2, 26,
+      15, 36,
+      50, 48,
+    ],
+    'circle-opacity': 0.12,
+    'circle-opacity-transition': { duration: 350 },
+    'circle-radius-transition': { duration: 350 },
+  },
+}
+
+const clusterCircleLayer = {
+  id: 'clusters',
+  type: 'circle',
+  source: 'properties',
+  filter: ['has', 'point_count'],
+  paint: {
+    'circle-color': [
+      'interpolate', ['linear'], ['get', 'point_count'],
+      2, '#60A5FA',
+      15, '#3B82F6',
+      50, '#1D4ED8',
+    ],
+    'circle-radius': [
+      'interpolate', ['linear'], ['get', 'point_count'],
+      2, 20,
+      15, 28,
+      50, 38,
+    ],
+    'circle-stroke-width': 2.5,
+    'circle-stroke-color': 'rgba(255,255,255,0.92)',
+    'circle-opacity': 1,
+    'circle-opacity-transition': { duration: 350 },
+    'circle-radius-transition': { duration: 350 },
+    'circle-color-transition': { duration: 350 },
+  },
+}
+
+const clusterCountLayer = {
+  id: 'cluster-count',
+  type: 'symbol',
+  source: 'properties',
+  filter: ['has', 'point_count'],
+  layout: {
+    'text-field': '{point_count_abbreviated}',
+    'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+    'text-size': [
+      'interpolate', ['linear'], ['get', 'point_count'],
+      2, 13,
+      50, 18,
+    ],
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+  },
+  paint: {
+    'text-color': '#ffffff',
+    'text-opacity-transition': { duration: 250 },
+  },
+}
+
+const unclusteredRingLayer = {
+  id: 'unclustered-ring',
+  type: 'circle',
+  source: 'properties',
+  filter: ['!', ['has', 'point_count']],
+  paint: {
+    'circle-color': CLUSTER_COLOR,
+    'circle-radius': 22,
+    'circle-opacity': 0.12,
+    'circle-opacity-transition': { duration: 350 },
+    'circle-radius-transition': { duration: 350 },
+  },
+}
+
+const unclusteredCircleLayer = {
+  id: 'unclustered-point',
+  type: 'circle',
+  source: 'properties',
+  filter: ['!', ['has', 'point_count']],
+  paint: {
+    'circle-color': '#60A5FA',
+    'circle-radius': 17,
+    'circle-stroke-width': 2.5,
+    'circle-stroke-color': 'rgba(255,255,255,0.92)',
+    'circle-opacity': 1,
+    'circle-opacity-transition': { duration: 350 },
+    'circle-radius-transition': { duration: 350 },
+  },
+}
+
+const unclusteredLabelLayer = {
+  id: 'unclustered-label',
+  type: 'symbol',
+  source: 'properties',
+  filter: ['!', ['has', 'point_count']],
+  layout: {
+    'text-field': '1',
+    'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+    'text-size': 13,
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+  },
+  paint: {
+    'text-color': '#ffffff',
+    'text-opacity-transition': { duration: 250 },
+  },
+}
+
+// ─── Sidebar property card ───────────────────────────────────────────────────
+
+function PropertyCard({ prop, searchCoords, onClick }) {
+  const [imgError, setImgError] = useState(false)
+  const dist = searchCoords
+    ? distanceMiles(searchCoords.lat, searchCoords.lng, prop.coords.lat, prop.coords.lng).toFixed(1)
+    : null
+
+  return (
+    <div
+      className="border-b border-border/60 px-4 py-4 hover:bg-blue-50/40 cursor-pointer transition-colors group"
+      onClick={onClick}
+    >
+      {/* Map thumbnail */}
+      <div className="w-full h-[120px] rounded-lg overflow-hidden mb-3 bg-surface">
+        {!imgError ? (
+          <img
+            src={staticMapUrl(prop.coords.lng, prop.coords.lat)}
+            alt=""
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-[#bbb]">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+        )}
+      </div>
+
+      {/* Address */}
+      <h4 className="text-[13px] font-semibold text-[#222] leading-snug group-hover:text-[#3B82F6] transition-colors line-clamp-2">
+        {prop.address}
+      </h4>
+
+      {/* Stats row */}
+      <div className="flex items-center gap-2 mt-1.5 text-xs text-[#666]">
+        <span className="font-medium">{prop.unitCount} unit{prop.unitCount !== 1 ? 's' : ''}</span>
+        <span className="w-[3px] h-[3px] rounded-full bg-[#ccc]" />
+        <span className="font-medium">
+          {prop.avgRent != null ? fmtCurrency(prop.avgRent) + '/mo' : 'No rent data'}
+        </span>
+        {dist && (
+          <>
+            <span className="w-[3px] h-[3px] rounded-full bg-[#ccc]" />
+            <span>{dist} mi</span>
+          </>
+        )}
+      </div>
+
+      {/* Bed badges */}
+      {prop.beds.length > 0 && (
+        <div className="flex gap-1.5 mt-2.5 flex-wrap">
+          {prop.beds.map((b) => (
+            <span key={b} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[11px] font-medium">
+              {b === 0 ? 'Studio' : `${b} Bed`}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export default function ComparablesMap({ units, onSelectProperty, searchCoords }) {
+  const mapRef = useRef(null)
+  const [viewState, setViewState] = useState({ longitude: -79.383, latitude: 43.653, zoom: 12 })
   const [geocoded, setGeocoded] = useState({})
   const [selected, setSelected] = useState(null)
-
-  // Subject address search
-  const [searchInput, setSearchInput] = useState('')
-  const [searchCoords, setSearchCoords] = useState(null)
-  const [searchLoading, setSearchLoading] = useState(false)
+  const [sidebarData, setSidebarData] = useState(null)
   const [radiusMiles, setRadiusMiles] = useState(3)
-  const inputRef = useRef(null)
+  const byAddressRef = useRef(new Map())
 
-  // Group units by unique property address
   const byAddress = useMemo(() => {
     const map = new Map()
     for (const unit of units) {
@@ -55,10 +242,10 @@ export default function ComparablesMap({ units, onSelectProperty }) {
       if (!map.has(unit.property_address)) map.set(unit.property_address, [])
       map.get(unit.property_address).push(unit)
     }
+    byAddressRef.current = map
     return map
   }, [units])
 
-  // Geocode property addresses
   useEffect(() => {
     if (!MAPBOX_TOKEN) return
     for (const address of byAddress.keys()) {
@@ -74,147 +261,131 @@ export default function ComparablesMap({ units, onSelectProperty }) {
     }
   }, [byAddress])
 
-  // Auto-center on first resolved point
   useEffect(() => {
-    const coords = Object.values(geocoded).filter(Boolean)
-    if (coords.length === 1) setViewState((v) => ({ ...v, longitude: coords[0].lng, latitude: coords[0].lat, zoom: 13 }))
-  }, [geocoded])
+    if (searchCoords) {
+      setViewState((v) => ({ ...v, longitude: searchCoords.lng, latitude: searchCoords.lat, zoom: 13 }))
+    }
+  }, [searchCoords])
 
-  // Geocode the subject address
-  async function handleSearch(e) {
-    e?.preventDefault()
-    if (!searchInput.trim()) return
-    setSearchLoading(true)
-    try {
-      const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchInput.trim())}.json?access_token=${MAPBOX_TOKEN}&limit=1`
-      )
-      const data = await res.json()
-      const center = data.features?.[0]?.center
-      if (center) {
-        const coords = { lng: center[0], lat: center[1] }
-        setSearchCoords(coords)
-        setViewState((v) => ({ ...v, longitude: coords.lng, latitude: coords.lat, zoom: 13 }))
+  const geojsonData = useMemo(() => {
+    const features = []
+    for (const [address, addressUnits] of byAddress.entries()) {
+      const coords = geocoded[address]
+      if (!coords) continue
+      if (searchCoords) {
+        const dist = distanceMiles(searchCoords.lat, searchCoords.lng, coords.lat, coords.lng)
+        if (dist > radiusMiles) continue
       }
-    } catch {}
-    setSearchLoading(false)
-  }
+      const ratedUnits = addressUnits.filter((u) => u.lease_rate != null)
+      const avgRent = ratedUnits.length > 0
+        ? Math.round(ratedUnits.reduce((s, u) => s + Number(u.lease_rate), 0) / ratedUnits.length)
+        : null
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [coords.lng, coords.lat] },
+        properties: {
+          address,
+          unitCount: addressUnits.length,
+          avgRent,
+        },
+      })
+    }
+    return { type: 'FeatureCollection', features }
+  }, [byAddress, geocoded, searchCoords, radiusMiles])
 
-  function clearSearch() {
-    setSearchInput('')
-    setSearchCoords(null)
-  }
-
-  // All geocoded property markers, filtered by radius if a search point is set
-  const allMarkers = useMemo(() =>
-    Array.from(byAddress.entries())
-      .map(([address, addressUnits]) => ({ address, addressUnits, coords: geocoded[address] }))
-      .filter((p) => p.coords),
-    [byAddress, geocoded]
+  const circleData = useMemo(
+    () => (searchCoords ? circleGeoJSON(searchCoords, radiusMiles) : null),
+    [searchCoords, radiusMiles],
   )
 
-  const visibleMarkers = useMemo(() => {
-    if (!searchCoords) return allMarkers
-    return allMarkers.filter(({ coords }) =>
-      distanceMiles(searchCoords.lat, searchCoords.lng, coords.lat, coords.lng) <= radiusMiles
-    )
-  }, [allMarkers, searchCoords, radiusMiles])
-
-  const circleData = useMemo(() =>
-    searchCoords ? circleGeoJSON(searchCoords, radiusMiles) : null,
-    [searchCoords, radiusMiles]
+  const geocodedCount = useMemo(
+    () => Array.from(byAddress.keys()).filter((addr) => geocoded[addr]).length,
+    [byAddress, geocoded],
   )
+
+  function buildPropertyList(features) {
+    const ba = byAddressRef.current
+    const props = features.map((f) => {
+      const address = f.properties.address
+      const addressUnits = ba.get(address) ?? []
+      const ratedUnits = addressUnits.filter((u) => u.lease_rate != null)
+      const avgRent = ratedUnits.length > 0
+        ? Math.round(ratedUnits.reduce((s, u) => s + Number(u.lease_rate), 0) / ratedUnits.length)
+        : null
+      const beds = [...new Set(addressUnits.map((u) => u.beds).filter((b) => b != null))].sort((a, b) => a - b)
+      return {
+        address,
+        unitCount: addressUnits.length,
+        avgRent,
+        beds,
+        coords: { lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] },
+      }
+    })
+    props.sort((a, b) => b.unitCount - a.unitCount)
+    return props
+  }
+
+  const handleClick = useCallback((e) => {
+    const feature = e.features?.[0]
+    if (!feature) {
+      setSelected(null)
+      setSidebarData(null)
+      return
+    }
+
+    if (feature.properties?.cluster) {
+      const clusterId = feature.properties.cluster_id
+      const rawMap = mapRef.current?.getMap?.()
+      if (!rawMap) return
+
+      const source = rawMap.getSource('properties')
+      if (!source?.getClusterLeaves) return
+
+      source.getClusterLeaves(clusterId, 100, 0, (err, leaves) => {
+        if (err || !leaves?.length) return
+        setSelected(null)
+        setSidebarData({ properties: buildPropertyList(leaves) })
+      })
+    } else {
+      setSidebarData(null)
+      setSelected(feature.properties?.address)
+    }
+  }, [])
 
   if (!MAPBOX_TOKEN) {
     return (
-      <div className="flex items-center justify-center h-64 bg-surface border border-border rounded text-sm text-[#777777]">
+      <div className="flex items-center justify-center h-full bg-surface border border-border rounded-lg text-sm text-[#777777]">
         Add <code className="mx-1 px-1 bg-border rounded text-xs font-mono">VITE_MAPBOX_TOKEN</code> to your .env to enable the map.
       </div>
     )
   }
 
+  const totalSidebarUnits = sidebarData
+    ? sidebarData.properties.reduce((s, p) => s + p.unitCount, 0)
+    : 0
+
   return (
-    <div className="rounded overflow-hidden border border-border relative" style={{ height: 600 }}>
-
-      {/* Search panel */}
-      <div className="absolute top-3 left-3 z-10 w-72 space-y-2">
-        <form onSubmit={handleSearch} className="flex gap-1.5">
-          <div className="relative flex-1">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <input
-              ref={inputRef}
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Subject address..."
-              className="w-full pl-8 pr-7 py-2 text-sm bg-white border border-border rounded shadow-md focus:outline-none focus:border-primary"
-            />
-            {searchInput && (
-              <button type="button" onClick={clearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#aaa] hover:text-[#555]">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={searchLoading || !searchInput.trim()}
-            className="px-3 py-2 bg-primary text-white text-xs font-medium rounded shadow-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {searchLoading ? '…' : 'Pin'}
-          </button>
-        </form>
-
-        {/* Radius selector — only shown when a subject address is pinned */}
-        {searchCoords && (
-          <div className="bg-white border border-border rounded shadow-md px-3 py-2.5 flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-[#777777] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth="2" />
-              <line x1="12" y1="12" x2="19" y2="12" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            <span className="text-xs text-[#555555]">Radius</span>
-            <div className="flex gap-1 flex-wrap ml-1">
-              {RADIUS_OPTIONS.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRadiusMiles(r)}
-                  className={`px-2 py-0.5 rounded text-xs transition-colors ${radiusMiles === r ? 'bg-primary text-white' : 'bg-surface text-[#555555] hover:bg-border'}`}
-                >
-                  {r}mi
-                </button>
-              ))}
-            </div>
-            <span className="text-xs text-[#999] ml-auto whitespace-nowrap">
-              {visibleMarkers.length} listing{visibleMarkers.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-        )}
-      </div>
-
+    <div className="rounded-lg overflow-hidden border border-border relative h-full">
       <MapGL
+        ref={mapRef}
         {...viewState}
         onMove={(e) => setViewState(e.viewState)}
         mapLib={mapboxgl}
-        mapStyle="mapbox://styles/mapbox/streets-v12"
+        mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={MAPBOX_TOKEN}
         style={{ width: '100%', height: '100%' }}
-        onClick={() => setSelected(null)}
+        interactiveLayerIds={['clusters', 'unclustered-point']}
+        onClick={handleClick}
       >
         <NavigationControl position="top-right" />
 
-        {/* Radius circle */}
         {circleData && (
           <Source id="radius-circle" type="geojson" data={circleData}>
-            <Layer id="radius-fill" type="fill" paint={{ 'fill-color': '#2563eb', 'fill-opacity': 0.07 }} />
-            <Layer id="radius-border" type="line" paint={{ 'line-color': '#2563eb', 'line-width': 1.5, 'line-dasharray': [3, 2] }} />
+            <Layer id="radius-fill" type="fill" paint={{ 'fill-color': '#3B82F6', 'fill-opacity': 0.06 }} />
+            <Layer id="radius-border" type="line" paint={{ 'line-color': '#3B82F6', 'line-width': 1.5, 'line-dasharray': [3, 2] }} />
           </Source>
         )}
 
-        {/* Subject address star marker */}
         {searchCoords && (
           <Marker longitude={searchCoords.lng} latitude={searchCoords.lat} anchor="bottom">
             <div className="flex flex-col items-center">
@@ -225,37 +396,22 @@ export default function ComparablesMap({ units, onSelectProperty }) {
           </Marker>
         )}
 
-        {/* Property markers */}
-        {visibleMarkers.map(({ address, addressUnits, coords }) => {
-          const ratedUnits = addressUnits.filter((u) => u.lease_rate != null)
-          const avgRent = ratedUnits.length > 0
-            ? ratedUnits.reduce((s, u) => s + Number(u.lease_rate), 0) / ratedUnits.length
-            : null
-          const isSelected = selected === address
-          const dist = searchCoords
-            ? distanceMiles(searchCoords.lat, searchCoords.lng, coords.lat, coords.lng).toFixed(1)
-            : null
+        <Source
+          id="properties"
+          type="geojson"
+          data={geojsonData}
+          cluster={true}
+          clusterMaxZoom={14}
+          clusterRadius={50}
+        >
+          <Layer {...clusterRingLayer} />
+          <Layer {...unclusteredRingLayer} />
+          <Layer {...clusterCircleLayer} />
+          <Layer {...unclusteredCircleLayer} />
+          <Layer {...clusterCountLayer} />
+          <Layer {...unclusteredLabelLayer} />
+        </Source>
 
-          return (
-            <Marker
-              key={address}
-              longitude={coords.lng}
-              latitude={coords.lat}
-              anchor="bottom"
-              onClick={(e) => { e.originalEvent.stopPropagation(); setSelected(address) }}
-            >
-              <div className="flex flex-col items-center cursor-pointer">
-                <div className={`px-2.5 py-1 rounded-full text-white text-xs font-semibold shadow-lg whitespace-nowrap transition-all ${isSelected ? 'bg-primary scale-110' : 'bg-[#222] hover:bg-primary hover:scale-105'}`}>
-                  {addressUnits.length} unit{addressUnits.length !== 1 ? 's' : ''}
-                  {avgRent != null && <span className="ml-1.5 opacity-75">{fmtCurrency(avgRent)}</span>}
-                </div>
-                <div className={`w-2 h-2 rotate-45 -mt-1 ${isSelected ? 'bg-primary' : 'bg-[#222]'}`} />
-              </div>
-            </Marker>
-          )
-        })}
-
-        {/* Popup */}
         {selected && geocoded[selected] && (() => {
           const addressUnits = byAddress.get(selected) ?? []
           const occupied = addressUnits.filter((u) => u.lease_rate != null)
@@ -264,7 +420,10 @@ export default function ComparablesMap({ units, onSelectProperty }) {
             : null
           const bedBreakdown = [...new Set(addressUnits.map((u) => u.beds).filter((b) => b != null))]
             .sort((a, b) => a - b)
-            .map((b) => { const count = addressUnits.filter((u) => Number(u.beds) === Number(b)).length; return `${b === 0 ? 'Studio' : `${b}BR`}: ${count}` })
+            .map((b) => {
+              const count = addressUnits.filter((u) => Number(u.beds) === Number(b)).length
+              return `${b === 0 ? 'Studio' : `${b}BR`}: ${count}`
+            })
             .join(' · ')
           const dist = searchCoords && geocoded[selected]
             ? distanceMiles(searchCoords.lat, searchCoords.lng, geocoded[selected].lat, geocoded[selected].lng).toFixed(1)
@@ -303,7 +462,7 @@ export default function ComparablesMap({ units, onSelectProperty }) {
 
                 <button
                   onClick={() => onSelectProperty?.(selected)}
-                  className="w-full py-1.5 px-3 bg-primary text-white text-xs font-medium rounded hover:bg-primary/90 transition-colors"
+                  className="w-full py-1.5 px-3 bg-[#3B82F6] text-white text-xs font-medium rounded hover:bg-[#2563EB] transition-colors"
                 >
                   View All Units →
                 </button>
@@ -313,11 +472,83 @@ export default function ComparablesMap({ units, onSelectProperty }) {
         })()}
       </MapGL>
 
-      {/* Geocoding progress */}
-      {byAddress.size > 0 && allMarkers.length < byAddress.size && (
-        <div className="absolute bottom-4 left-3 bg-white border border-border rounded px-3 py-1.5 text-xs text-[#777777] shadow flex items-center gap-2">
-          <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
-          Locating {byAddress.size - allMarkers.length} address{byAddress.size - allMarkers.length !== 1 ? 'es' : ''}...
+      {/* ── Cluster sidebar ──────────────────────────────────────────────────── */}
+      {sidebarData && (
+        <div
+          className="absolute top-0 left-0 bottom-0 z-20 flex"
+          style={{ width: 370, animation: 'sidebarIn .22s ease-out' }}
+        >
+          <style>{`@keyframes sidebarIn{from{transform:translateX(-100%);opacity:.4}to{transform:translateX(0);opacity:1}}`}</style>
+          <div className="flex-1 bg-white/[0.97] backdrop-blur-sm shadow-2xl flex flex-col rounded-r-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+              <div>
+                <h3 className="text-sm font-bold text-[#222]">
+                  {sidebarData.properties.length} {sidebarData.properties.length === 1 ? 'Property' : 'Properties'}
+                </h3>
+                <p className="text-[11px] text-[#999] mt-0.5">
+                  {totalSidebarUnits} total unit{totalSidebarUnits !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setSidebarData(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[#aaa] hover:text-[#555] hover:bg-surface transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Property list */}
+            <div className="flex-1 overflow-y-auto">
+              {sidebarData.properties.map((prop) => (
+                <PropertyCard
+                  key={prop.address}
+                  prop={prop}
+                  searchCoords={searchCoords}
+                  onClick={() => onSelectProperty?.(prop.address)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Radius overlay ───────────────────────────────────────────────────── */}
+      {searchCoords && (
+        <div className="absolute top-3 left-3 z-10">
+          <div className="bg-white border border-border rounded-lg shadow-md px-3 py-2.5 flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-[#777777] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" strokeWidth="2" />
+              <line x1="12" y1="12" x2="19" y2="12" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="text-xs text-[#555555]">Radius</span>
+            <div className="flex gap-1 flex-wrap ml-1">
+              {RADIUS_OPTIONS.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRadiusMiles(r)}
+                  className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                    radiusMiles === r ? 'bg-[#3B82F6] text-white' : 'bg-surface text-[#555555] hover:bg-border'
+                  }`}
+                >
+                  {r}mi
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-[#999] ml-auto whitespace-nowrap">
+              {geojsonData.features.length} listing{geojsonData.features.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Geocoding progress ───────────────────────────────────────────────── */}
+      {byAddress.size > 0 && geocodedCount < byAddress.size && (
+        <div className="absolute bottom-4 left-3 bg-white border border-border rounded-lg px-3 py-1.5 text-xs text-[#777777] shadow flex items-center gap-2">
+          <div className="w-3 h-3 border border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+          Locating {byAddress.size - geocodedCount} address{byAddress.size - geocodedCount !== 1 ? 'es' : ''}...
         </div>
       )}
     </div>

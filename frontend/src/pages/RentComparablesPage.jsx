@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 const ComparablesMap = lazy(() => import('../components/ComparablesMap.jsx'))
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 import {
   bulkExtractAndSave,
   extractRentComparables,
@@ -85,7 +86,7 @@ const TABLE_COLS = ['Address', 'Unit', 'Type', 'Beds', 'Baths', 'Sqft', 'Rent/mo
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function RentComparablesPage({ onBack }) {
-  const [view, setView] = useState('history') // 'upload' | 'review' | 'history'
+  const [view, setView] = useState('map') // 'map' | 'upload' | 'review' | 'history' | 'property'
 
   // Upload state
   const [files, setFiles] = useState([])
@@ -118,6 +119,9 @@ export default function RentComparablesPage({ onBack }) {
   const batchUploadRef = useRef(null)
   const uploadTargetBatch = useRef(null)
   const [addressSearch, setAddressSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchCoords, setSearchCoords] = useState(null)
+  const [searchLoading, setSearchLoading] = useState(false)
   const [bedsFilter, setBedsFilter] = useState('')
   const [sqftMin, setSqftMin] = useState('')
   const [sqftMax, setSqftMax] = useState('')
@@ -212,7 +216,7 @@ export default function RentComparablesPage({ onBack }) {
   function handleBulkDone() {
     setFiles([])
     setBulkProgress(null)
-    setView('history')
+    setView('map')
   }
 
   // ── Review handlers ──────────────────────────────────────────────────────
@@ -230,7 +234,7 @@ export default function RentComparablesPage({ onBack }) {
       setReviewUnits([])
       setBatchId(null)
       await loadHistory()
-      setView('history')
+      setView('map')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -256,6 +260,26 @@ export default function RentComparablesPage({ onBack }) {
     } finally {
       setLoadingHistory(false)
     }
+  }
+
+  async function handleAddressSearch(e) {
+    e?.preventDefault()
+    if (!searchInput.trim() || !MAPBOX_TOKEN) return
+    setSearchLoading(true)
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchInput.trim())}.json?access_token=${MAPBOX_TOKEN}&limit=1`
+      )
+      const data = await res.json()
+      const center = data.features?.[0]?.center
+      if (center) setSearchCoords({ lng: center[0], lat: center[1] })
+    } catch {}
+    setSearchLoading(false)
+  }
+
+  function clearSearch() {
+    setSearchInput('')
+    setSearchCoords(null)
   }
 
   function handleEditStart(unit) {
@@ -364,7 +388,7 @@ export default function RentComparablesPage({ onBack }) {
   }
 
   useEffect(() => {
-    if (view === 'history') loadHistory()
+    if (view === 'history' || view === 'map') loadHistory()
   }, [view])
 
   // ── Derived data ─────────────────────────────────────────────────────────
@@ -397,7 +421,7 @@ export default function RentComparablesPage({ onBack }) {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className={`bg-background flex flex-col ${view === 'map' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       <PageHeader onBack={onBack} />
 
       {/* Hidden file input for per-batch upload */}
@@ -409,15 +433,65 @@ export default function RentComparablesPage({ onBack }) {
         onChange={handleBatchFileSelected}
       />
 
-      <main className="flex-1 px-8 py-10">
-
-        {/* Error banner */}
-        {error && (
-          <div className="max-w-6xl mx-auto mb-6 p-4 bg-red-50 border border-red-200 rounded text-red-700 text-sm flex items-start justify-between gap-4">
+      {/* Error banner */}
+      {error && (
+        <div className="px-8 pt-4 flex-shrink-0">
+          <div className="max-w-6xl mx-auto p-4 bg-red-50 border border-red-200 rounded text-red-700 text-sm flex items-start justify-between gap-4">
             <span><strong>Error:</strong> {error}</span>
             <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs underline">Dismiss</button>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          MAP VIEW
+      ══════════════════════════════════════════════════════ */}
+      {view === 'map' && (
+        <>
+          <div className="px-6 py-3 flex items-center gap-3 border-b border-border bg-white flex-shrink-0">
+            <form onSubmit={handleAddressSearch} className="flex-1 relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#aaa]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search address..."
+                className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
+              />
+              {searchInput && (
+                <button type="button" onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#aaa] hover:text-[#555]">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </form>
+            <Button variant="primary" size="sm" onClick={() => setView('upload')}>
+              + Add Property
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0 px-6 pb-4 pt-4">
+            {loadingHistory ? (
+              <div className="flex items-center justify-center h-full gap-3">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-[#777777] text-sm">Loading database...</span>
+              </div>
+            ) : (
+              <Suspense fallback={<div className="flex items-center justify-center h-full gap-3"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /><span className="text-[#777777] text-sm">Loading map...</span></div>}>
+                <ComparablesMap
+                  units={history}
+                  searchCoords={searchCoords}
+                  onSelectProperty={(address) => { setSelectedProperty(address); setView('property') }}
+                />
+              </Suspense>
+            )}
+          </div>
+        </>
+      )}
+
+      {view !== 'map' && (
+      <main className="flex-1 px-8 py-10">
 
         {/* ══════════════════════════════════════════════════════
             UPLOAD VIEW
@@ -429,7 +503,7 @@ export default function RentComparablesPage({ onBack }) {
                 <h2 className="text-2xl font-bold text-primary tracking-tight">Upload Rent Rolls</h2>
                 <p className="text-[#777777] mt-2 text-sm">Upload rent roll PDFs to extract and store rental data.</p>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => setView('history')}>
+              <Button variant="secondary" size="sm" onClick={() => setView('map')}>
                 View Database
               </Button>
             </div>
@@ -1227,7 +1301,7 @@ export default function RentComparablesPage({ onBack }) {
               <div className="mb-6 flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => { setView('history'); setSelectedProperty(null) }}
+                    onClick={() => { setView('map'); setSelectedProperty(null) }}
                     className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1337,6 +1411,7 @@ export default function RentComparablesPage({ onBack }) {
           )
         })()}
       </main>
+      )}
     </div>
   )
 }
