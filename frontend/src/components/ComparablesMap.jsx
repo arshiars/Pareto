@@ -230,14 +230,64 @@ function PropertyCard({ prop, searchCoords, onClick }) {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ComparablesMap({ units, onSelectProperty, searchCoords }) {
+export default function ComparablesMap({ units, onSelectProperty, searchCoords, pinStarCoords, onPinStarChange, highlightAddress }) {
   const mapRef = useRef(null)
   const [viewState, setViewState] = useState({ longitude: -79.383, latitude: 43.653, zoom: 12 })
   const [geocoded, setGeocoded] = useState({})
   const [selected, setSelected] = useState(null)
   const [sidebarData, setSidebarData] = useState(null)
-  const [radiusMiles, setRadiusMiles] = useState(3)
+  const [searchRadiusMiles, setSearchRadiusMiles] = useState(3)
+  const [pinStarRadiusMiles, setPinStarRadiusMiles] = useState(3)
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = useState({
+    beds: '',
+    yearBuiltMin: '',
+    yearBuiltMax: '',
+    leaseStartFrom: '',
+    leaseStartTo: '',
+    leaseExecutedFrom: '',
+    leaseExecutedTo: '',
+    constructionType: '',
+    unitCountMin: '',
+    unitCountMax: '',
+    avgSqftMin: '',
+    avgSqftMax: '',
+  })
+  const filterRef = useRef(null)
   const byAddressRef = useRef(new Map())
+
+  const activeFilterCount = Object.values(filters).filter((v) => v !== '').length
+
+  function updateFilter(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function clearFilters() {
+    setFilters({
+      beds: '',
+      yearBuiltMin: '',
+      yearBuiltMax: '',
+      leaseStartFrom: '',
+      leaseStartTo: '',
+      leaseExecutedFrom: '',
+      leaseExecutedTo: '',
+      constructionType: '',
+      unitCountMin: '',
+      unitCountMax: '',
+      avgSqftMin: '',
+      avgSqftMax: '',
+    })
+  }
+
+  // Close filter panel when clicking outside
+  useEffect(() => {
+    if (!showFilters) return
+    function handleClickOutside(e) {
+      if (filterRef.current && !filterRef.current.contains(e.target)) setShowFilters(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showFilters])
 
   const byAddress = useMemo(() => {
     const map = new Map()
@@ -271,15 +321,79 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
     }
   }, [searchCoords])
 
+  useEffect(() => {
+    if (pinStarCoords) {
+      setViewState((v) => ({ ...v, longitude: pinStarCoords.lng, latitude: pinStarCoords.lat, zoom: 13 }))
+    }
+  }, [pinStarCoords])
+
+  // Highlight a matched address from search
+  useEffect(() => {
+    if (highlightAddress && geocoded[highlightAddress]) {
+      const coords = geocoded[highlightAddress]
+      setViewState((v) => ({ ...v, longitude: coords.lng, latitude: coords.lat, zoom: 15 }))
+      setSelected(highlightAddress)
+    }
+  }, [highlightAddress, geocoded])
+
+  // Use Pin Star radius if active, otherwise search radius
+  const activeFilterCenter = pinStarCoords || searchCoords
+  const activeFilterRadius = pinStarCoords ? pinStarRadiusMiles : searchRadiusMiles
+
   const geojsonData = useMemo(() => {
     const features = []
     for (const [address, addressUnits] of byAddress.entries()) {
       const coords = geocoded[address]
       if (!coords) continue
-      if (searchCoords) {
-        const dist = distanceMiles(searchCoords.lat, searchCoords.lng, coords.lat, coords.lng)
-        if (dist > radiusMiles) continue
+      if (activeFilterCenter) {
+        const dist = distanceMiles(activeFilterCenter.lat, activeFilterCenter.lng, coords.lat, coords.lng)
+        if (dist > activeFilterRadius) continue
       }
+
+      // Apply property-level filters
+      const unitCount = addressUnits.length
+
+      // Beds filter
+      if (filters.beds !== '') {
+        const target = Number(filters.beds)
+        if (!addressUnits.some((u) => u.beds != null && Number(u.beds) === target)) continue
+      }
+
+      // Year built filter
+      const yearBuilt = addressUnits[0]?.year_built
+      if (filters.yearBuiltMin !== '' && (yearBuilt == null || Number(yearBuilt) < Number(filters.yearBuiltMin))) continue
+      if (filters.yearBuiltMax !== '' && (yearBuilt == null || Number(yearBuilt) > Number(filters.yearBuiltMax))) continue
+
+      // Construction type filter
+      const constructionType = addressUnits[0]?.construction_type
+      if (filters.constructionType !== '' && (constructionType == null || constructionType !== filters.constructionType)) continue
+
+      // Lease start (move_in) filter
+      if (filters.leaseStartFrom !== '') {
+        if (!addressUnits.some((u) => u.move_in && u.move_in >= filters.leaseStartFrom)) continue
+      }
+      if (filters.leaseStartTo !== '') {
+        if (!addressUnits.some((u) => u.move_in && u.move_in <= filters.leaseStartTo)) continue
+      }
+
+      // Lease executed filter
+      if (filters.leaseExecutedFrom !== '') {
+        if (!addressUnits.some((u) => u.lease_executed && u.lease_executed >= filters.leaseExecutedFrom)) continue
+      }
+      if (filters.leaseExecutedTo !== '') {
+        if (!addressUnits.some((u) => u.lease_executed && u.lease_executed <= filters.leaseExecutedTo)) continue
+      }
+
+      // Unit count filter
+      if (filters.unitCountMin !== '' && unitCount < Number(filters.unitCountMin)) continue
+      if (filters.unitCountMax !== '' && unitCount > Number(filters.unitCountMax)) continue
+
+      // Avg sqft filter
+      const sqftUnits = addressUnits.filter((u) => u.sqft != null)
+      const avgSqft = sqftUnits.length > 0 ? sqftUnits.reduce((s, u) => s + Number(u.sqft), 0) / sqftUnits.length : null
+      if (filters.avgSqftMin !== '' && (avgSqft == null || avgSqft < Number(filters.avgSqftMin))) continue
+      if (filters.avgSqftMax !== '' && (avgSqft == null || avgSqft > Number(filters.avgSqftMax))) continue
+
       const ratedUnits = addressUnits.filter((u) => u.lease_rate != null)
       const avgRent = ratedUnits.length > 0
         ? Math.round(ratedUnits.reduce((s, u) => s + Number(u.lease_rate), 0) / ratedUnits.length)
@@ -289,17 +403,22 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
         geometry: { type: 'Point', coordinates: [coords.lng, coords.lat] },
         properties: {
           address,
-          unitCount: addressUnits.length,
+          unitCount,
           avgRent,
         },
       })
     }
     return { type: 'FeatureCollection', features }
-  }, [byAddress, geocoded, searchCoords, radiusMiles])
+  }, [byAddress, geocoded, activeFilterCenter, activeFilterRadius, filters])
 
-  const circleData = useMemo(
-    () => (searchCoords ? circleGeoJSON(searchCoords, radiusMiles) : null),
-    [searchCoords, radiusMiles],
+  const searchCircleData = useMemo(
+    () => (searchCoords ? circleGeoJSON(searchCoords, searchRadiusMiles) : null),
+    [searchCoords, searchRadiusMiles],
+  )
+
+  const pinStarCircleData = useMemo(
+    () => (pinStarCoords ? circleGeoJSON(pinStarCoords, pinStarRadiusMiles) : null),
+    [pinStarCoords, pinStarRadiusMiles],
   )
 
   const geocodedCount = useMemo(
@@ -356,6 +475,13 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
     }
   }, [])
 
+  // Right-click to drop Pin Star
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault()
+    const { lng, lat } = e.lngLat
+    onPinStarChange?.({ lng, lat })
+  }, [onPinStarChange])
+
   if (!MAPBOX_TOKEN) {
     return (
       <div className="flex items-center justify-center h-full bg-surface border border-border rounded-lg text-sm text-[#777777]">
@@ -380,18 +506,39 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
         style={{ width: '100%', height: '100%' }}
         interactiveLayerIds={['clusters', 'unclustered-point']}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
       >
         <NavigationControl position="top-right" />
 
-        {circleData && (
-          <Source id="radius-circle" type="geojson" data={circleData}>
-            <Layer id="radius-fill" type="fill" paint={{ 'fill-color': '#3B82F6', 'fill-opacity': 0.06 }} />
-            <Layer id="radius-border" type="line" paint={{ 'line-color': '#3B82F6', 'line-width': 1.5, 'line-dasharray': [3, 2] }} />
+        {/* Search address pin + radius (blue) */}
+        {searchCircleData && (
+          <Source id="search-radius-circle" type="geojson" data={searchCircleData}>
+            <Layer id="search-radius-fill" type="fill" paint={{ 'fill-color': '#3B82F6', 'fill-opacity': 0.06 }} />
+            <Layer id="search-radius-border" type="line" paint={{ 'line-color': '#3B82F6', 'line-width': 1.5, 'line-dasharray': [3, 2] }} />
           </Source>
         )}
 
         {searchCoords && (
           <Marker longitude={searchCoords.lng} latitude={searchCoords.lat} anchor="bottom">
+            <div className="flex flex-col items-center">
+              <svg className="w-7 h-7 drop-shadow-md" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#3B82F6" />
+                <circle cx="12" cy="9" r="2.5" fill="white" />
+              </svg>
+            </div>
+          </Marker>
+        )}
+
+        {/* Pin Star + radius (amber) — separate from search */}
+        {pinStarCircleData && (
+          <Source id="pinstar-radius-circle" type="geojson" data={pinStarCircleData}>
+            <Layer id="pinstar-radius-fill" type="fill" paint={{ 'fill-color': '#f59e0b', 'fill-opacity': 0.08 }} />
+            <Layer id="pinstar-radius-border" type="line" paint={{ 'line-color': '#d97706', 'line-width': 1.5, 'line-dasharray': [3, 2] }} />
+          </Source>
+        )}
+
+        {pinStarCoords && (
+          <Marker longitude={pinStarCoords.lng} latitude={pinStarCoords.lat} anchor="bottom">
             <div className="flex flex-col items-center">
               <svg className="w-8 h-8 drop-shadow-md" viewBox="0 0 24 24" fill="#f59e0b" stroke="#d97706" strokeWidth="1">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
@@ -429,8 +576,9 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
               return `${b === 0 ? 'Studio' : `${b}BR`}: ${count}`
             })
             .join(' · ')
-          const dist = searchCoords && geocoded[selected]
-            ? distanceMiles(searchCoords.lat, searchCoords.lng, geocoded[selected].lat, geocoded[selected].lng).toFixed(1)
+          const distCenter = activeFilterCenter
+          const dist = distCenter && geocoded[selected]
+            ? distanceMiles(distCenter.lat, distCenter.lng, geocoded[selected].lat, geocoded[selected].lng).toFixed(1)
             : null
 
           return (
@@ -518,7 +666,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
                 <PropertyCard
                   key={prop.address}
                   prop={prop}
-                  searchCoords={searchCoords}
+                  searchCoords={activeFilterCenter}
                   onClick={() => onSelectProperty?.(prop.address)}
                 />
               ))}
@@ -527,34 +675,299 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
         </div>
       )}
 
-      {/* ── Radius overlay ───────────────────────────────────────────────────── */}
-      {searchCoords && (
-        <div className="absolute top-3 left-3 z-10">
-          <div className="bg-white border border-border rounded-lg shadow-md px-3 py-2.5 flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-[#777777] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth="2" />
-              <line x1="12" y1="12" x2="19" y2="12" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            <span className="text-xs text-[#555555]">Radius</span>
-            <div className="flex gap-1 flex-wrap ml-1">
-              {RADIUS_OPTIONS.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRadiusMiles(r)}
-                  className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                    radiusMiles === r ? 'bg-[#3B82F6] text-white' : 'bg-surface text-[#555555] hover:bg-border'
-                  }`}
-                >
-                  {r}mi
-                </button>
-              ))}
+      {/* ── Radius overlays ──────────────────────────────────────────────────── */}
+      {(searchCoords || pinStarCoords) && (
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
+          {/* Search radius control */}
+          {searchCoords && (
+            <div className="bg-white border border-border rounded-lg shadow-md px-3 py-2.5 flex items-center gap-2">
+              <svg className="w-3.5 h-3.5 text-[#3B82F6] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#3B82F6" />
+                <circle cx="12" cy="9" r="2.5" fill="white" />
+              </svg>
+              <span className="text-xs text-[#555555]">Search</span>
+              <div className="flex gap-1 flex-wrap ml-1">
+                {RADIUS_OPTIONS.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setSearchRadiusMiles(r)}
+                    className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                      searchRadiusMiles === r ? 'bg-[#3B82F6] text-white' : 'bg-surface text-[#555555] hover:bg-border'
+                    }`}
+                  >
+                    {r}mi
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-[#999] ml-auto whitespace-nowrap">
+                {geojsonData.features.length} listing{geojsonData.features.length !== 1 ? 's' : ''}
+              </span>
             </div>
-            <span className="text-xs text-[#999] ml-auto whitespace-nowrap">
-              {geojsonData.features.length} listing{geojsonData.features.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+          )}
+
+          {/* Pin Star radius control */}
+          {pinStarCoords && (
+            <div className="bg-white border border-amber-200 rounded-lg shadow-md px-3 py-2.5 flex items-center gap-2">
+              <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" viewBox="0 0 24 24" fill="#f59e0b" stroke="#d97706" strokeWidth="1">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              <span className="text-xs text-[#555555]">Pin Star</span>
+              <div className="flex gap-1 flex-wrap ml-1">
+                {RADIUS_OPTIONS.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setPinStarRadiusMiles(r)}
+                    className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                      pinStarRadiusMiles === r ? 'bg-amber-500 text-white' : 'bg-surface text-[#555555] hover:bg-border'
+                    }`}
+                  >
+                    {r}mi
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => onPinStarChange?.(null)}
+                className="ml-1 text-[#aaa] hover:text-[#555] transition-colors"
+                title="Remove Pin Star"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── Filter button + panel ────────────────────────────────────────────── */}
+      <div className="absolute top-3 right-14 z-10" ref={filterRef}>
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-md text-xs font-medium transition-colors ${
+            activeFilterCount > 0
+              ? 'bg-[#3B82F6] text-white border border-[#3B82F6]'
+              : 'bg-white text-[#555] border border-border hover:bg-gray-50'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Filters
+          {activeFilterCount > 0 && (
+            <span className="ml-0.5 w-4 h-4 rounded-full bg-white text-[#3B82F6] text-[10px] font-bold flex items-center justify-center">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+
+        {showFilters && (
+          <div className="absolute top-full right-0 mt-2 w-[400px] bg-white border border-border rounded-xl shadow-xl overflow-hidden"
+            style={{ animation: 'filterIn .18s ease-out' }}
+          >
+            <style>{`@keyframes filterIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gray-50/60">
+              <h3 className="text-sm font-semibold text-[#222]">Filter Properties</h3>
+              <div className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-[11px] text-[#3B82F6] hover:text-[#2563EB] font-medium transition-colors"
+                  >
+                    Clear all
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowFilters(false)}
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[#aaa] hover:text-[#555] hover:bg-gray-100 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter body */}
+            <div className="px-4 py-3 space-y-4 max-h-[420px] overflow-y-auto">
+
+              {/* Beds */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Bedrooms</label>
+                <div className="flex gap-1.5">
+                  {[
+                    { label: 'Any', value: '' },
+                    { label: 'Studio', value: '0' },
+                    { label: '1', value: '1' },
+                    { label: '2', value: '2' },
+                    { label: '3+', value: '3' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateFilter('beds', filters.beds === opt.value ? '' : opt.value)}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        filters.beds === opt.value
+                          ? 'bg-[#3B82F6] text-white'
+                          : 'bg-gray-50 text-[#555] hover:bg-gray-100 border border-gray-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Construction Type (Frame) */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Frame / Construction</label>
+                <div className="flex gap-1.5">
+                  {[
+                    { label: 'Any', value: '' },
+                    { label: 'Wood', value: 'wood' },
+                    { label: 'Concrete', value: 'concrete' },
+                    { label: 'Steel', value: 'steel' },
+                    { label: 'Masonry', value: 'masonry' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateFilter('constructionType', filters.constructionType === opt.value ? '' : opt.value)}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        filters.constructionType === opt.value
+                          ? 'bg-[#3B82F6] text-white'
+                          : 'bg-gray-50 text-[#555] hover:bg-gray-100 border border-gray-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Year Built */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Year Built</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="From"
+                    value={filters.yearBuiltMin}
+                    onChange={(e) => updateFilter('yearBuiltMin', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                  <span className="text-[#ccc] self-center text-xs">—</span>
+                  <input
+                    type="number"
+                    placeholder="To"
+                    value={filters.yearBuiltMax}
+                    onChange={(e) => updateFilter('yearBuiltMax', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Number of Units */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Number of Units</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={filters.unitCountMin}
+                    onChange={(e) => updateFilter('unitCountMin', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                  <span className="text-[#ccc] self-center text-xs">—</span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={filters.unitCountMax}
+                    onChange={(e) => updateFilter('unitCountMax', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Avg Square Foot */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Avg Square Footage</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min sqft"
+                    value={filters.avgSqftMin}
+                    onChange={(e) => updateFilter('avgSqftMin', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                  <span className="text-[#ccc] self-center text-xs">—</span>
+                  <input
+                    type="number"
+                    placeholder="Max sqft"
+                    value={filters.avgSqftMax}
+                    onChange={(e) => updateFilter('avgSqftMax', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Lease Start (Move In) */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Lease Start</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={filters.leaseStartFrom}
+                    onChange={(e) => updateFilter('leaseStartFrom', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                  <span className="text-[#ccc] self-center text-xs">—</span>
+                  <input
+                    type="date"
+                    value={filters.leaseStartTo}
+                    onChange={(e) => updateFilter('leaseStartTo', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Lease Executed */}
+              <div>
+                <label className="block text-[11px] font-medium text-[#888] uppercase tracking-wide mb-1.5">Lease Executed</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={filters.leaseExecutedFrom}
+                    onChange={(e) => updateFilter('leaseExecutedFrom', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                  <span className="text-[#ccc] self-center text-xs">—</span>
+                  <input
+                    type="date"
+                    value={filters.leaseExecutedTo}
+                    onChange={(e) => updateFilter('leaseExecutedTo', e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:border-[#3B82F6] focus:bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer with result count */}
+            <div className="px-4 py-3 border-t border-border bg-gray-50/60 flex items-center justify-between">
+              <span className="text-xs text-[#888]">
+                {geojsonData.features.length} propert{geojsonData.features.length === 1 ? 'y' : 'ies'} found
+              </span>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="px-3 py-1.5 text-xs font-medium text-[#555] bg-white border border-border rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Geocoding progress ───────────────────────────────────────────────── */}
       {byAddress.size > 0 && geocodedCount < byAddress.size && (

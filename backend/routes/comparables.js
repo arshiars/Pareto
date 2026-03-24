@@ -35,6 +35,8 @@ router.post('/bulk', async (req, res) => {
             batch_id: batchId,
             source_file: req.file.originalname,
             property_address: property.property_address ?? null,
+            year_built: property.year_built ?? null,
+            construction_type: property.construction_type ?? null,
             unit_number: unit.unit_number ?? null,
             unit_type: unit.unit_type ?? null,
             beds: unit.beds ?? null,
@@ -43,6 +45,7 @@ router.post('/bulk', async (req, res) => {
             lease_rate: unit.lease_rate ?? null,
             move_in: unit.move_in ?? null,
             move_out: unit.move_out ?? null,
+            lease_executed: unit.lease_executed ?? null,
             flagged: unit.flagged ?? false,
           })
         }
@@ -81,6 +84,8 @@ router.post('/extract', async (req, res) => {
             batch_id: batchId,
             source_file: result.sourceFile,
             property_address: property.property_address ?? null,
+            year_built: property.year_built ?? null,
+            construction_type: property.construction_type ?? null,
             unit_number: unit.unit_number ?? null,
             unit_type: unit.unit_type ?? null,
             beds: unit.beds ?? null,
@@ -89,6 +94,7 @@ router.post('/extract', async (req, res) => {
             lease_rate: unit.lease_rate ?? null,
             move_in: unit.move_in ?? null,
             move_out: unit.move_out ?? null,
+            lease_executed: unit.lease_executed ?? null,
             flagged: unit.flagged ?? false,
           })
         }
@@ -213,7 +219,7 @@ router.patch('/batch/:batchId/address', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    const allowed = ['property_address', 'unit_number', 'unit_type', 'beds', 'baths', 'sqft', 'lease_rate', 'move_in', 'move_out', 'flagged']
+    const allowed = ['property_address', 'year_built', 'construction_type', 'unit_number', 'unit_type', 'beds', 'baths', 'sqft', 'lease_rate', 'move_in', 'move_out', 'lease_executed', 'flagged']
     const updates = {}
     for (const key of allowed) {
       if (key in req.body) updates[key] = req.body[key]

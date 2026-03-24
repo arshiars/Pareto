@@ -122,6 +122,8 @@ export default function RentComparablesPage({ onBack }) {
   const [searchInput, setSearchInput] = useState('')
   const [searchCoords, setSearchCoords] = useState(null)
   const [searchLoading, setSearchLoading] = useState(false)
+  const [pinStarCoords, setPinStarCoords] = useState(null)
+  const [highlightAddress, setHighlightAddress] = useState(null)
   const [bedsFilter, setBedsFilter] = useState('')
   const [sqftMin, setSqftMin] = useState('')
   const [sqftMax, setSqftMax] = useState('')
@@ -264,11 +266,28 @@ export default function RentComparablesPage({ onBack }) {
 
   async function handleAddressSearch(e) {
     e?.preventDefault()
-    if (!searchInput.trim() || !MAPBOX_TOKEN) return
+    const query = searchInput.trim()
+    if (!query) return
+
+    // First: check if the address matches an existing listing
+    const matchedAddress = history.find(
+      (u) => u.property_address && u.property_address.toLowerCase().includes(query.toLowerCase())
+    )?.property_address
+
+    if (matchedAddress) {
+      // Found in listings — highlight it on the map, clear any search pin
+      setSearchCoords(null)
+      setHighlightAddress(matchedAddress)
+      return
+    }
+
+    // Not found in listings — geocode and place a search pin with radius
+    if (!MAPBOX_TOKEN) return
     setSearchLoading(true)
+    setHighlightAddress(null)
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchInput.trim())}.json?access_token=${MAPBOX_TOKEN}&limit=1`
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&limit=1`
       )
       const data = await res.json()
       const center = data.features?.[0]?.center
@@ -280,6 +299,7 @@ export default function RentComparablesPage({ onBack }) {
   function clearSearch() {
     setSearchInput('')
     setSearchCoords(null)
+    setHighlightAddress(null)
   }
 
   function handleEditStart(unit) {
@@ -456,7 +476,7 @@ export default function RentComparablesPage({ onBack }) {
               <input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search address..."
+                placeholder="Search address — matches listings or pins location on map..."
                 className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
               />
               {searchInput && (
@@ -467,6 +487,18 @@ export default function RentComparablesPage({ onBack }) {
                 </button>
               )}
             </form>
+            {pinStarCoords && (
+              <button
+                onClick={() => setPinStarCoords(null)}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="#f59e0b" stroke="#d97706" strokeWidth="1">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                Clear Pin Star
+              </button>
+            )}
+            <span className="text-[10px] text-[#aaa] whitespace-nowrap hidden lg:block">Right-click map to drop Pin Star</span>
             <Button variant="primary" size="sm" onClick={() => setView('upload')}>
               + Add Property
             </Button>
@@ -482,6 +514,9 @@ export default function RentComparablesPage({ onBack }) {
                 <ComparablesMap
                   units={history}
                   searchCoords={searchCoords}
+                  pinStarCoords={pinStarCoords}
+                  onPinStarChange={setPinStarCoords}
+                  highlightAddress={highlightAddress}
                   onSelectProperty={(address) => { setSelectedProperty(address); setView('property') }}
                 />
               </Suspense>

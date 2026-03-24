@@ -6,6 +6,8 @@ Return a JSON object with this exact structure:
   "properties": [
     {
       "property_address": "Full property address as written in the document, or null if not found",
+      "year_built": 1995,
+      "construction_type": "concrete",
       "units": [
         {
           "unit_number": "Unit identifier (e.g. '101', 'A', 'PH1'), or null",
@@ -16,6 +18,7 @@ Return a JSON object with this exact structure:
           "lease_rate": 1850,
           "move_in": "2023-01-01",
           "move_out": "2024-12-31",
+          "lease_executed": "2022-11-15",
           "flagged": false
         }
       ]
@@ -30,6 +33,9 @@ Field rules:
 - sqft: numeric square footage with no commas (e.g. 750)
 - move_in / move_out: ISO 8601 format YYYY-MM-DD. Convert any format found ("Jan 1, 2023", "01/01/23", "2023-01-01") to this format
 - move_out null means the unit is currently occupied with no stated end date, or the field is blank
+- lease_executed: the date the lease was signed/executed (ISO 8601 YYYY-MM-DD), or null if not present
+- year_built: the year the property was constructed as a 4-digit number (e.g. 1995), or null if not found
+- construction_type: the building frame/construction type — use one of: "wood", "concrete", "steel", "masonry", "other", or null if not found
 - flagged: set to true if ANY key field for that unit was blurred, cut off, or could not be read with confidence; otherwise false
 - Use null for any field that is genuinely absent or unreadable — do not guess or infer
 
