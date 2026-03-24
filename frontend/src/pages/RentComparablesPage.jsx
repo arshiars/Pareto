@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 const ComparablesMap = lazy(() => import('../components/ComparablesMap.jsx'))
+const CompTable = lazy(() => import('../components/CompTable.jsx'))
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 import {
   bulkExtractAndSave,
@@ -86,7 +87,7 @@ const TABLE_COLS = ['Address', 'Unit', 'Type', 'Beds', 'Baths', 'Sqft', 'Rent/mo
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function RentComparablesPage({ onBack }) {
-  const [view, setView] = useState('map') // 'map' | 'upload' | 'review' | 'history' | 'property'
+  const [view, setView] = useState('map') // 'map' | 'upload' | 'review' | 'history' | 'property' | 'comptable'
 
   // Upload state
   const [files, setFiles] = useState([])
@@ -124,6 +125,7 @@ export default function RentComparablesPage({ onBack }) {
   const [searchLoading, setSearchLoading] = useState(false)
   const [pinStarCoords, setPinStarCoords] = useState(null)
   const [highlightAddress, setHighlightAddress] = useState(null)
+  const [selectedAddresses, setSelectedAddresses] = useState(new Set())
   const [bedsFilter, setBedsFilter] = useState('')
   const [sqftMin, setSqftMin] = useState('')
   const [sqftMax, setSqftMax] = useState('')
@@ -441,7 +443,7 @@ export default function RentComparablesPage({ onBack }) {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className={`bg-background flex flex-col ${view === 'map' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className={`bg-background flex flex-col ${view === 'map' || view === 'comptable' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       <PageHeader onBack={onBack} />
 
       {/* Hidden file input for per-batch upload */}
@@ -517,6 +519,17 @@ export default function RentComparablesPage({ onBack }) {
                   pinStarCoords={pinStarCoords}
                   onPinStarChange={setPinStarCoords}
                   highlightAddress={highlightAddress}
+                  selectedAddresses={selectedAddresses}
+                  onToggleSelect={(address) => {
+                    setSelectedAddresses((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(address)) next.delete(address)
+                      else next.add(address)
+                      return next
+                    })
+                  }}
+                  onClearSelected={() => setSelectedAddresses(new Set())}
+                  onOpenCompTable={() => setView('comptable')}
                   onSelectProperty={(address) => { setSelectedProperty(address); setView('property') }}
                 />
               </Suspense>
@@ -525,7 +538,23 @@ export default function RentComparablesPage({ onBack }) {
         </>
       )}
 
-      {view !== 'map' && (
+      {/* ══════════════════════════════════════════════════════
+          COMP TABLE VIEW
+      ══════════════════════════════════════════════════════ */}
+      {view === 'comptable' && (
+        <div className="flex-1 min-h-0">
+          <Suspense fallback={<div className="flex items-center justify-center h-full gap-3"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /><span className="text-[#777777] text-sm">Loading...</span></div>}>
+            <CompTable
+              selectedAddresses={selectedAddresses}
+              units={history}
+              onBack={() => setView('map')}
+              onSelectProperty={(address) => { setSelectedProperty(address); setView('property') }}
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {view !== 'map' && view !== 'comptable' && (
       <main className="flex-1 px-8 py-10">
 
         {/* ══════════════════════════════════════════════════════
