@@ -4,6 +4,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY
 
 const RADIUS_OPTIONS = [0.5, 1, 2, 3, 5, 10, 25]
 
@@ -33,7 +34,10 @@ function circleGeoJSON(center, radiusMiles, steps = 64) {
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } }
 }
 
-function staticMapUrl(lng, lat) {
+function propertyImageUrl(lng, lat) {
+  if (GOOGLE_KEY) {
+    return `https://maps.googleapis.com/maps/api/streetview?size=600x300&location=${lat},${lng}&fov=90&pitch=10&key=${GOOGLE_KEY}`
+  }
   return `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-s+3B82F6(${lng},${lat})/${lng},${lat},15,0/400x160@2x?access_token=${MAPBOX_TOKEN}`
 }
 
@@ -170,11 +174,11 @@ function PropertyCard({ prop, searchCoords, onClick }) {
       className="border-b border-border/60 px-4 py-4 hover:bg-blue-50/40 cursor-pointer transition-colors group"
       onClick={onClick}
     >
-      {/* Map thumbnail */}
-      <div className="w-full h-[120px] rounded-lg overflow-hidden mb-3 bg-surface">
+      {/* Property image */}
+      <div className="w-full h-[120px] rounded-lg overflow-hidden mb-3 bg-surface relative">
         {!imgError ? (
           <img
-            src={staticMapUrl(prop.coords.lng, prop.coords.lat)}
+            src={propertyImageUrl(prop.coords.lng, prop.coords.lat)}
             alt=""
             className="w-full h-full object-cover"
             loading="lazy"
@@ -440,6 +444,14 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords }
               className="font-sans"
             >
               <div className="p-1 space-y-3">
+                <div className="w-full h-[100px] -mx-1 -mt-1 rounded overflow-hidden bg-surface">
+                  <img
+                    src={propertyImageUrl(geocoded[selected].lng, geocoded[selected].lat)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold text-sm text-[#222] leading-snug">{selected}</p>
                   {dist && <span className="text-xs text-[#999] whitespace-nowrap flex-shrink-0">{dist} mi</span>}
