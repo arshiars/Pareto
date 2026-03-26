@@ -133,13 +133,14 @@ const unclusteredCircleLayer = {
   source: 'properties',
   filter: ['!', ['has', 'point_count']],
   paint: {
-    'circle-color': '#60A5FA',
+    'circle-color': ['case', ['==', ['get', 'selected'], true], '#1D4ED8', '#60A5FA'],
     'circle-radius': 17,
     'circle-stroke-width': 2.5,
     'circle-stroke-color': 'rgba(255,255,255,0.92)',
     'circle-opacity': 1,
     'circle-opacity-transition': { duration: 350 },
     'circle-radius-transition': { duration: 350 },
+    'circle-color-transition': { duration: 300 },
   },
 }
 
@@ -171,7 +172,7 @@ function PropertyCard({ prop, searchCoords, onClick, isSelected, onToggleSelect 
 
   return (
     <div
-      className={`border-b border-border/60 px-4 py-4 hover:bg-blue-50/40 cursor-pointer transition-colors group relative ${isSelected ? 'bg-blue-50/50' : ''}`}
+      className={`border-b border-border/60 px-4 py-4 hover:bg-blue-100/60 cursor-pointer transition-colors group relative ${isSelected ? 'bg-blue-100/70' : ''}`}
       onClick={onClick}
     >
       {/* Checkbox */}
@@ -248,7 +249,7 @@ function PropertyCard({ prop, searchCoords, onClick, isSelected, onToggleSelect 
 
 export default function ComparablesMap({ units, onSelectProperty, searchCoords, pinStarCoords, onPinStarChange, highlightAddress, selectedAddresses, onToggleSelect, onClearSelected, onOpenCompTable }) {
   const mapRef = useRef(null)
-  const [viewState, setViewState] = useState({ longitude: -79.383, latitude: 43.653, zoom: 12 })
+  const [viewState, setViewState] = useState({ longitude: -96, latitude: 56, zoom: 4 })
   const [geocoded, setGeocoded] = useState({})
   const [selected, setSelected] = useState(null)
   const [sidebarData, setSidebarData] = useState(null)
@@ -421,11 +422,12 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
           address,
           unitCount,
           avgRent,
+          selected: selectedAddresses?.has(address) ?? false,
         },
       })
     }
     return { type: 'FeatureCollection', features }
-  }, [byAddress, geocoded, activeFilterCenter, activeFilterRadius, filters])
+  }, [byAddress, geocoded, activeFilterCenter, activeFilterRadius, filters, selectedAddresses])
 
   const searchCircleData = useMemo(
     () => (searchCoords ? circleGeoJSON(searchCoords, searchRadiusMiles) : null),
@@ -525,6 +527,24 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
         onContextMenu={handleContextMenu}
       >
         <NavigationControl position="top-right" />
+
+        {/* World dimming overlay + Canada golden border */}
+        <Source id="country-boundaries" type="vector" url="mapbox://mapbox.country-boundaries-v1">
+          <Layer
+            id="world-dim"
+            type="fill"
+            source-layer="country_boundaries"
+            filter={['!=', ['get', 'iso_3166_1'], 'CA']}
+            paint={{ 'fill-color': '#888888', 'fill-opacity': 0.35 }}
+          />
+          <Layer
+            id="canada-border"
+            type="line"
+            source-layer="country_boundaries"
+            filter={['==', ['get', 'iso_3166_1'], 'CA']}
+            paint={{ 'line-color': '#C5A46D', 'line-width': 2, 'line-opacity': 0.9 }}
+          />
+        </Source>
 
         {/* Search address pin + radius (blue) */}
         {searchCircleData && (
@@ -1014,55 +1034,66 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
         )}
       </div>
 
-      {/* ── Selected properties tray + Comp Table button ──────────────────── */}
+      {/* ── Selected properties panel ────────────────────────────────────── */}
       {selectedAddresses?.size > 0 && (
-        <div className="absolute bottom-4 right-3 z-10 flex items-end gap-3">
-          {/* Selected tray */}
-          <div className="bg-white border border-border rounded-xl shadow-lg max-w-[480px]"
-            style={{ animation: 'filterIn .18s ease-out' }}
-          >
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60">
-              <span className="text-xs font-semibold text-[#222]">
-                {selectedAddresses.size} selected
-              </span>
-              <button
-                onClick={onClearSelected}
-                className="text-[11px] text-[#999] hover:text-[#555] font-medium transition-colors"
-              >
-                Clear all
-              </button>
+        <div
+          className="absolute bottom-4 right-4 z-10 w-[300px] bg-white rounded-2xl shadow-xl border border-border overflow-hidden"
+          style={{ animation: 'trayIn .2s ease-out' }}
+        >
+          <style>{`@keyframes trayIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-[#3B82F6] flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-[10px] font-bold leading-none">{selectedAddresses.size}</span>
+              </div>
+              <span className="text-sm font-semibold text-[#1a1a1a]">Selected Comparables</span>
             </div>
-            <div className="px-3 py-2 flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto">
-              {[...selectedAddresses].map((addr) => (
-                <span
-                  key={addr}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-[11px] font-medium"
-                >
-                  <span className="truncate max-w-[180px]">{addr}</span>
-                  <button
-                    onClick={() => onToggleSelect?.(addr)}
-                    className="flex-shrink-0 w-3.5 h-3.5 rounded-full hover:bg-blue-200 flex items-center justify-center transition-colors"
-                  >
-                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </span>
-              ))}
-            </div>
+            <button
+              onClick={onClearSelected}
+              className="text-[11px] text-[#aaa] hover:text-red-400 font-medium transition-colors"
+            >
+              Clear all
+            </button>
           </div>
 
-          {/* Comp Table button */}
-          <button
-            onClick={onOpenCompTable}
-            className="flex-shrink-0 flex items-center gap-2 px-5 py-3 bg-[#3B82F6] text-white rounded-xl shadow-lg hover:bg-[#2563EB] transition-colors font-medium text-sm"
-            style={{ animation: 'filterIn .18s ease-out' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M12 3v18M3 6h18v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6z" />
-            </svg>
-            Comp Table
-          </button>
+          {/* Address list */}
+          <div className="max-h-[180px] overflow-y-auto px-2 pb-1">
+            {[...selectedAddresses].map((addr, i) => (
+              <div
+                key={addr}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 group transition-colors"
+              >
+                <span className="w-4 h-4 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                  {i + 1}
+                </span>
+                <span className="flex-1 text-[12px] text-[#333] truncate">{addr}</span>
+                <button
+                  onClick={() => onToggleSelect?.(addr)}
+                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 w-4 h-4 rounded flex items-center justify-center text-[#bbb] hover:text-red-400 transition-all"
+                  title="Remove"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Action */}
+          <div className="px-3 pb-3 pt-2">
+            <button
+              onClick={onOpenCompTable}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#3B82F6] hover:bg-[#2563EB] text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+              </svg>
+              Open Comparable Analysis
+            </button>
+          </div>
         </div>
       )}
 

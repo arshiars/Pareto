@@ -31,10 +31,16 @@ export default function App() {
   const [mode, setMode] = useState(null) // null | 'cmhc' | 'conventional'
 
   useEffect(() => {
-    checkAuth().then((ok) => {
-      setAuthenticated(ok)
-      setChecking(false)
-    })
+    checkAuth()
+      .then((ok) => {
+        setAuthenticated(ok)
+      })
+      .catch(() => {
+        setAuthenticated(false)
+      })
+      .finally(() => {
+        setChecking(false)
+      })
   }, [])
 
   if (checking) return null

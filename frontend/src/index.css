@@ -19,6 +19,14 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-in {
+  animation: page-in 0.18s ease-out both;
+}
+
 @media print {
   .print\:hidden {
     display: none !important;

@@ -4,6 +4,7 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 const ComparablesMap = lazy(() => import('../components/ComparablesMap.jsx'))
 const CompTable = lazy(() => import('../components/CompTable.jsx'))
+const PropertyMap = lazy(() => import('../components/PropertyMap.jsx'))
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 import {
   bulkExtractAndSave,
@@ -124,8 +125,14 @@ export default function RentComparablesPage({ onBack }) {
   const [searchCoords, setSearchCoords] = useState(null)
   const [searchLoading, setSearchLoading] = useState(false)
   const [pinStarCoords, setPinStarCoords] = useState(null)
+  const [subjectLabel, setSubjectLabel] = useState(null)
   const [highlightAddress, setHighlightAddress] = useState(null)
-  const [selectedAddresses, setSelectedAddresses] = useState(new Set())
+  const [selectedAddresses, setSelectedAddresses] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fundus_selected_addresses')
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    } catch { return new Set() }
+  })
   const [bedsFilter, setBedsFilter] = useState('')
   const [sqftMin, setSqftMin] = useState('')
   const [sqftMax, setSqftMax] = useState('')
@@ -304,6 +311,18 @@ export default function RentComparablesPage({ onBack }) {
     setHighlightAddress(null)
   }
 
+  function pinCurrentAsSubject() {
+    if (!searchCoords) return
+    setPinStarCoords(searchCoords)
+    setSubjectLabel(searchInput.trim() || null)
+    setSearchCoords(null)
+  }
+
+  function clearSubject() {
+    setPinStarCoords(null)
+    setSubjectLabel(null)
+  }
+
   function handleEditStart(unit) {
     setEditingId(unit.id)
     setEditingValues({
@@ -413,6 +432,10 @@ export default function RentComparablesPage({ onBack }) {
     if (view === 'history' || view === 'map') loadHistory()
   }, [view])
 
+  useEffect(() => {
+    localStorage.setItem('fundus_selected_addresses', JSON.stringify([...selectedAddresses]))
+  }, [selectedAddresses])
+
   // ── Derived data ─────────────────────────────────────────────────────────
 
   const filteredHistory = history.filter((u) => {
@@ -444,7 +467,7 @@ export default function RentComparablesPage({ onBack }) {
 
   return (
     <div className={`bg-background flex flex-col ${view === 'map' || view === 'comptable' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
-      <PageHeader onBack={onBack} />
+      <PageHeader onBack={view === 'comptable' ? () => setView('map') : onBack} />
 
       {/* Hidden file input for per-batch upload */}
       <input
@@ -469,7 +492,7 @@ export default function RentComparablesPage({ onBack }) {
           MAP VIEW
       ══════════════════════════════════════════════════════ */}
       {view === 'map' && (
-        <>
+        <div className="contents page-in">
           <div className="px-6 py-3 flex items-center gap-3 border-b border-border bg-white flex-shrink-0">
             <form onSubmit={handleAddressSearch} className="flex-1 relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#aaa]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -481,43 +504,64 @@ export default function RentComparablesPage({ onBack }) {
                 placeholder="Search address — matches listings or pins location on map..."
                 className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
               />
-              {searchInput && (
-                <button type="button" onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#aaa] hover:text-[#555]">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchInput && (
+                  <button type="button" onClick={clearSearch} className="w-6 h-6 flex items-center justify-center text-[#aaa] hover:text-[#555]">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </form>
+
+            {/* Set as Subject Property button */}
+            <button
+              type="button"
+              onClick={pinCurrentAsSubject}
+              disabled={!searchCoords}
+              title={searchCoords ? 'Set as Subject Property' : 'Search an address first, then set it as the Subject Property'}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors flex-shrink-0 ${
+                searchCoords
+                  ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 cursor-pointer'
+                  : 'bg-surface border-border text-[#bbb] cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              Set as Subject
+            </button>
+            {/* Subject property chip — shown when star is pinned */}
             {pinStarCoords && (
-              <button
-                onClick={() => setPinStarCoords(null)}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="#f59e0b" stroke="#d97706" strokeWidth="1">
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex-shrink-0">
+                <svg className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                 </svg>
-                Clear Pin Star
-              </button>
+                {subjectLabel && (
+                  <span className="text-xs text-amber-800 font-medium max-w-[160px] truncate" title={subjectLabel}>{subjectLabel}</span>
+                )}
+                <button onClick={clearSubject} className="text-amber-400 hover:text-amber-700 transition-colors flex-shrink-0" title="Clear subject property">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             )}
-            <span className="text-[10px] text-[#aaa] whitespace-nowrap hidden lg:block">Right-click map to drop Pin Star</span>
             <Button variant="primary" size="sm" onClick={() => setView('upload')}>
               + Add Property
             </Button>
           </div>
           <div className="flex-1 min-h-0 px-6 pb-4 pt-4">
             {loadingHistory ? (
-              <div className="flex items-center justify-center h-full gap-3">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <span className="text-[#777777] text-sm">Loading database...</span>
-              </div>
+              <div className="h-full rounded-xl bg-gray-100 animate-pulse" />
             ) : (
-              <Suspense fallback={<div className="flex items-center justify-center h-full gap-3"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /><span className="text-[#777777] text-sm">Loading map...</span></div>}>
+              <Suspense fallback={<div className="h-full rounded-xl bg-gray-100 animate-pulse" />}>
                 <ComparablesMap
                   units={history}
                   searchCoords={searchCoords}
                   pinStarCoords={pinStarCoords}
-                  onPinStarChange={setPinStarCoords}
+                  onPinStarChange={(coords) => { setPinStarCoords(coords); setSubjectLabel(null) }}
                   highlightAddress={highlightAddress}
                   selectedAddresses={selectedAddresses}
                   onToggleSelect={(address) => {
@@ -535,27 +579,35 @@ export default function RentComparablesPage({ onBack }) {
               </Suspense>
             )}
           </div>
-        </>
+        </div>
       )}
 
       {/* ══════════════════════════════════════════════════════
           COMP TABLE VIEW
       ══════════════════════════════════════════════════════ */}
       {view === 'comptable' && (
-        <div className="flex-1 min-h-0">
-          <Suspense fallback={<div className="flex items-center justify-center h-full gap-3"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /><span className="text-[#777777] text-sm">Loading...</span></div>}>
+        <div className="flex-1 min-h-0 page-in">
+          <Suspense fallback={
+            <div className="p-6 space-y-3">
+              <div className="h-8 bg-gray-100 rounded-lg animate-pulse w-1/3" />
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" style={{ opacity: 1 - i * 0.15 }} />
+              ))}
+            </div>
+          }>
             <CompTable
               selectedAddresses={selectedAddresses}
               units={history}
               onBack={() => setView('map')}
               onSelectProperty={(address) => { setSelectedProperty(address); setView('property') }}
+              pinStarCoords={pinStarCoords}
             />
           </Suspense>
         </div>
       )}
 
       {view !== 'map' && view !== 'comptable' && (
-      <main className="flex-1 px-8 py-10">
+      <main className="flex-1 px-8 py-10 page-in">
 
         {/* ══════════════════════════════════════════════════════
             UPLOAD VIEW
@@ -1421,6 +1473,13 @@ export default function RentComparablesPage({ onBack }) {
                   })}
                 </div>
               )}
+
+              {/* Map + Street View */}
+              <div className="mb-6">
+                <Suspense fallback={<div className="h-[260px] rounded-xl bg-surface border border-border flex items-center justify-center text-xs text-[#999]">Loading map…</div>}>
+                  <PropertyMap address={selectedProperty} />
+                </Suspense>
+              </div>
 
               {/* Units table */}
               <Card className="overflow-hidden">
