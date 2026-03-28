@@ -8,6 +8,7 @@ import { dirname, join } from 'path'
 import analysisRouter from './routes/analysis.js'
 import ippRouter from './routes/ipp.js'
 import comparablesRouter from './routes/comparables.js'
+import pipelineRouter from './routes/pipeline.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '../.env') })
@@ -128,6 +129,17 @@ app.use('/api/comparables', (req, res, next) => {
   return next()
 })
 app.use('/api/comparables', comparablesRouter)
+
+// Protect /api/pipeline routes
+app.use('/api/pipeline', (req, res, next) => {
+  if (!process.env.GATEWAY_PASSWORD) return next()
+  const token = extractToken(req)
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+  const payload = verifyToken(token)
+  if (!payload || !payload.granted) return res.status(401).json({ error: 'Unauthorized' })
+  return next()
+})
+app.use('/api/pipeline', pipelineRouter)
 
 // Global JSON error handler — must be last, must have 4 args
 app.use((err, _req, res, _next) => {
