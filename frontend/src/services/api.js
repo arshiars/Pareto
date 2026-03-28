@@ -132,43 +132,6 @@ export async function queryLoanDatabase(question) {
 
 // ─── Rent Comparables ────────────────────────────────────────────────────────
 
-export async function bulkExtractAndSave(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await fetch(`${BASE_URL}/comparables/bulk`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: authHeaders(),
-    body: formData,
-  })
-  if (!res.ok) throw new Error(await parseError(res))
-  return res.json()
-}
-
-export async function extractRentComparables(files) {
-  const formData = new FormData()
-  files.forEach((file) => formData.append('files', file))
-  const res = await fetch(`${BASE_URL}/comparables/extract`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: authHeaders(),
-    body: formData,
-  })
-  if (!res.ok) throw new Error(await parseError(res))
-  return res.json()
-}
-
-export async function saveRentComparables(batchId, units) {
-  const res = await fetch(`${BASE_URL}/comparables/save`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    credentials: 'include',
-    body: JSON.stringify({ batchId, units }),
-  })
-  if (!res.ok) throw new Error(await parseError(res))
-  return res.json()
-}
-
 export async function fetchRentComparables() {
   const res = await fetch(`${BASE_URL}/comparables`, {
     credentials: 'include',
@@ -178,8 +141,26 @@ export async function fetchRentComparables() {
   return res.json()
 }
 
-export async function renameBatchAddress(batchId, address) {
-  const res = await fetch(`${BASE_URL}/comparables/batch/${batchId}/address`, {
+export async function fetchProperties() {
+  const res = await fetch(`${BASE_URL}/comparables/properties`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function fetchPropertyDetail(propertyId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function renamePropertyAddress(propertyId, address) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/address`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     credentials: 'include',
@@ -189,8 +170,8 @@ export async function renameBatchAddress(batchId, address) {
   return res.json()
 }
 
-export async function updateRentComparable(id, fields) {
-  const res = await fetch(`${BASE_URL}/comparables/${id}`, {
+export async function updateUnit(id, fields) {
+  const res = await fetch(`${BASE_URL}/comparables/unit/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     credentials: 'include',
@@ -200,9 +181,53 @@ export async function updateRentComparable(id, fields) {
   return res.json()
 }
 
-export async function deleteRentComparablesBatch(batchId) {
-  const res = await fetch(`${BASE_URL}/comparables/batch/${batchId}`, {
+export async function deleteProperty(propertyId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}`, {
     method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+// ─── S3 Pipeline Upload ─────────────────────────────────────────────────────
+
+export async function uploadFilesToS3(address, docType, files) {
+  const fileList = files.map((f) => ({ fileName: f.name }))
+
+  const presignRes = await fetch(`${BASE_URL}/pipeline/presign-batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ address, docType, files: fileList }),
+  })
+  if (!presignRes.ok) throw new Error(await parseError(presignRes))
+  const { uploads } = await presignRes.json()
+
+  const results = []
+  for (const { fileName, uploadUrl } of uploads) {
+    const file = files.find((f) => f.name === fileName)
+    if (!file) continue
+
+    try {
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: file,
+      })
+      if (!putRes.ok) throw new Error(`S3 upload failed: HTTP ${putRes.status}`)
+      results.push({ file: fileName, success: true })
+    } catch (err) {
+      results.push({ file: fileName, success: false, error: err.message })
+    }
+  }
+
+  return results
+}
+
+export async function fetchPipelineStatus() {
+  const res = await fetch(`${BASE_URL}/pipeline/status`, {
     credentials: 'include',
     headers: authHeaders(),
   })
