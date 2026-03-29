@@ -9,19 +9,19 @@ const DOCUMENT_TYPES = [
   'Broker CIM',
   'Rent Roll',
   'Operating Statement',
-  'Tax Bill',
-  'Insurance Bill',
-  'Utility Bill',
+  'Property Tax Statement',
+  'Insurance Summary',
+  'Utility Invoice',
   'Other',
 ]
 
 const STAGES = [
-  { label: 'Reading uploaded documents',            ms: 2000  },
-  { label: 'Parsing rent roll & tenant schedule',   ms: 6000  },
-  { label: 'Extracting operating expenses',         ms: 7000  },
-  { label: 'Locating income & recovery items',      ms: 6000  },
-  { label: 'Extracting acquisition & cost data',    ms: 8000  },
-  { label: 'Finalising extraction & building summary', ms: null },
+  { label: 'Analyzing uploaded documents',              ms: 2000  },
+  { label: 'Parsing rent roll and tenant schedule',     ms: 6000  },
+  { label: 'Extracting operating expense data',         ms: 7000  },
+  { label: 'Identifying income and recoverable items',  ms: 6000  },
+  { label: 'Extracting acquisition and capital costs',  ms: 8000  },
+  { label: 'Finalizing extraction and generating summary', ms: null },
 ]
 
 function UploadZone({ onDrop, isDragActive, disabled, getInputProps, getRootProps }) {
@@ -126,8 +126,8 @@ export default function Step1Upload() {
             </h2>
             <p className="text-[#999999] text-sm mt-1">
               {isCompleting
-                ? 'All data extracted — loading your review…'
-                : 'Claude is reading your documents and extracting financial data…'}
+                ? 'Document analysis complete — preparing your review…'
+                : 'Analyzing your documents and extracting financial data…'}
             </p>
           </div>
           <div className="flex flex-col gap-3 w-full max-w-sm mx-auto text-left">
@@ -166,7 +166,7 @@ export default function Step1Upload() {
         </div>
         <h2 className="text-2xl font-bold text-primary">Upload Property Documents</h2>
         <p className="text-[#777777] mt-1 text-sm">
-          Upload the broker CIM, rent roll, operating statements, and bills. Claude will extract all financial data automatically.
+          Upload the broker CIM, rent roll, operating statements, and property bills. Financial data will be extracted automatically.
         </p>
       </div>
 

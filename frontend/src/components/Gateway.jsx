@@ -29,7 +29,7 @@ export default function Gateway({ onAuthenticated }) {
             <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">CMHC Underwriting</p>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
           </div>
           <form onSubmit={handleSubmit}>

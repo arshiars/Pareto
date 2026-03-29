@@ -1,6 +1,6 @@
 const steps = [
   { key: 'upload',  label: 'Upload',            num: 1 },
-  { key: 'review',  label: 'Review & Summary',  num: 2 },
+  { key: 'review',  label: 'Review',  num: 2 },
   { key: 'excel',   label: 'Excel',             num: 3 },
 ]
 
