@@ -9,9 +9,10 @@ import analysisRouter from './routes/analysis.js'
 import ippRouter from './routes/ipp.js'
 import comparablesRouter from './routes/comparables.js'
 import pipelineRouter from './routes/pipeline.js'
+import loiRouter from './routes/loi.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: join(__dirname, '../.env') })
+dotenv.config({ path: join(__dirname, '.env') })
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -41,7 +42,7 @@ function verifyToken(token) {
 const isProduction = process.env.NODE_ENV === 'production'
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
   exposedHeaders: ['X-Population-Report'],
 }))
@@ -140,6 +141,17 @@ app.use('/api/pipeline', (req, res, next) => {
   return next()
 })
 app.use('/api/pipeline', pipelineRouter)
+
+// Protect /api/loi routes
+app.use('/api/loi', (req, res, next) => {
+  if (!process.env.GATEWAY_PASSWORD) return next()
+  const token = extractToken(req)
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+  const payload = verifyToken(token)
+  if (!payload || !payload.granted) return res.status(401).json({ error: 'Unauthorized' })
+  return next()
+})
+app.use('/api/loi', loiRouter)
 
 // Global JSON error handler — must be last, must have 4 args
 app.use((err, _req, res, _next) => {

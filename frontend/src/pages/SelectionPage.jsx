@@ -90,6 +90,29 @@ export default function SelectionPage({ onSelect }) {
           </button>
 
           <button
+            onClick={() => onSelect('loi-drafter')}
+            className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 rounded-sm bg-surface flex items-center justify-center group-hover:bg-primary/10 transition-colors flex-shrink-0">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <span className="text-primary font-semibold text-sm">LOI Drafter</span>
+                <p className="text-[#777777] text-xs mt-0.5">Draft Letters of Intent for property acquisitions</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
+              Open
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+
+          <button
             onClick={() => onSelect('comparable-analysis')}
             className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
           >
@@ -102,6 +125,29 @@ export default function SelectionPage({ onSelect }) {
               <div className="text-left">
                 <span className="text-primary font-semibold text-sm">Comparable Analysis</span>
                 <p className="text-[#777777] text-xs mt-0.5">Analyze and compare property metrics across deals</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
+              Open
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+
+          <button
+            onClick={() => {}}
+            className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 rounded-sm bg-surface flex items-center justify-center group-hover:bg-primary/10 transition-colors flex-shrink-0">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <span className="text-primary font-semibold text-sm">Construction Cost Consultant (Triple C)</span>
+                <p className="text-[#777777] text-xs mt-0.5">Construction cost analysis and consulting for development projects</p>
               </div>
             </div>
             <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">

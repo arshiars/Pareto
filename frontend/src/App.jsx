@@ -11,6 +11,7 @@ import IPPPage from './pages/IPPPage.jsx'
 import CMHCDatabasePage from './pages/CMHCDatabasePage.jsx'
 import ComparableAnalysisPage from './pages/ComparableAnalysisPage.jsx'
 import RentComparablesPage from './pages/RentComparablesPage.jsx'
+import LOIDrafterPage from './pages/LOIDrafterPage.jsx'
 import { checkAuth } from './services/api.js'
 
 function AppContent() {
@@ -63,6 +64,10 @@ export default function App() {
 
   if (mode === 'cmhc-database') {
     return <CMHCDatabasePage onBack={() => setMode(null)} />
+  }
+
+  if (mode === 'loi-drafter') {
+    return <LOIDrafterPage onBack={() => setMode(null)} />
   }
 
   if (mode === 'comparable-analysis') {
