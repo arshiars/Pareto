@@ -1,7 +1,9 @@
-import { createContext, useContext, useReducer } from 'react'
+import { createContext, useContext, useReducer, useEffect } from 'react'
 import { extractDocuments, researchField } from '../services/api.js'
 
 const AnalysisContext = createContext(null)
+
+const TRANSIENT_STEPS = new Set(['processing', 'completing'])
 
 const initialState = {
   step: 'upload', // upload | processing | completing | review | excel
@@ -51,8 +53,32 @@ function reducer(state, action) {
   }
 }
 
+const CACHE_KEY = 'fundus_analysis_state'
+
+function getHydratedState() {
+  try {
+    const cached = sessionStorage.getItem(CACHE_KEY)
+    if (cached) {
+      const parsed = JSON.parse(cached)
+      // Don't restore transient or error states — fall back to upload
+      if (TRANSIENT_STEPS.has(parsed.step) || parsed.error) {
+        parsed.step = parsed.extractedData ? 'review' : 'upload'
+        parsed.error = null
+      }
+      return { ...initialState, ...parsed }
+    }
+  } catch {}
+  return initialState
+}
+
 export function AnalysisProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(reducer, null, getHydratedState)
+
+  // Persist cacheable state (skip files — File objects aren't serializable)
+  useEffect(() => {
+    const { files, ...cacheable } = state
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(cacheable))
+  }, [state])
 
   async function analyze(files, labels = []) {
     dispatch({ type: 'SET_FILES', files })
@@ -79,7 +105,7 @@ export function AnalysisProvider({ children }) {
   function setDefault(key, value)  { dispatch({ type: 'SET_DEFAULT', key, value }) }
   function goToReview()            { dispatch({ type: 'SET_STEP', step: 'review' }) }
   function goToExcel()             { dispatch({ type: 'SET_STEP', step: 'excel' }) }
-  function reset()                 { dispatch({ type: 'RESET' }) }
+  function reset()                 { dispatch({ type: 'RESET' }); sessionStorage.removeItem(CACHE_KEY) }
 
   return (
     <AnalysisContext.Provider
