@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo, lazy, Suspense } from 'react'
+import { useCallback, useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useDropzone } from 'react-dropzone'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
@@ -366,7 +366,10 @@ export default function RentComparablesPage({ onBack }) {
   const [addressSearch, setAddressSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [searchCoords, setSearchCoords] = useState(null)
-  const [searchLoading, setSearchLoading] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const searchRef = useRef(null)
+  const debounceRef = useRef(null)
   const [pinStarCoords, setPinStarCoords] = useState(null)
   const [subjectLabel, setSubjectLabel] = useState(null)
   const [highlightAddress, setHighlightAddress] = useState(null)
@@ -466,40 +469,95 @@ export default function RentComparablesPage({ onBack }) {
     }
   }
 
-  async function handleAddressSearch(e) {
-    e?.preventDefault()
-    const query = searchInput.trim()
-    if (!query) return
+  const uniqueAddresses = useMemo(() => {
+    const set = new Set()
+    for (const u of history) {
+      if (u.property_address) set.add(u.property_address)
+    }
+    return [...set]
+  }, [history])
 
-    const matchedAddress = history.find(
-      (u) => u.property_address && u.property_address.toLowerCase().includes(query.toLowerCase())
-    )?.property_address
+  function handleSearchChange(value) {
+    setSearchInput(value)
+    clearTimeout(debounceRef.current)
 
-    if (matchedAddress) {
-      setSearchCoords(null)
-      setHighlightAddress(matchedAddress)
+    if (!value.trim()) {
+      setSuggestions([])
+      setShowSuggestions(false)
       return
     }
 
-    if (!MAPBOX_TOKEN) return
-    setSearchLoading(true)
-    setHighlightAddress(null)
-    try {
-      const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&limit=1`
-      )
-      const data = await res.json()
-      const center = data.features?.[0]?.center
-      if (center) setSearchCoords({ lng: center[0], lat: center[1] })
-    } catch {}
-    setSearchLoading(false)
+    const q = value.trim().toLowerCase()
+    const propertyMatches = uniqueAddresses
+      .filter((a) => a.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map((a) => ({ type: 'property', label: a }))
+
+    setSuggestions(propertyMatches)
+    setShowSuggestions(true)
+
+    if (MAPBOX_TOKEN) {
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value.trim())}.json?access_token=${MAPBOX_TOKEN}&limit=5&country=ca&types=address,place,locality,neighborhood,postcode`
+          )
+          const data = await res.json()
+          const geoResults = (data.features ?? []).map((f) => ({
+            type: 'location',
+            label: f.place_name,
+            coords: { lng: f.center[0], lat: f.center[1] },
+          }))
+
+          setSuggestions((prev) => {
+            const props = prev.filter((s) => s.type === 'property')
+            return [...props, ...geoResults]
+          })
+        } catch {}
+      }, 300)
+    }
+  }
+
+  function handleSelectSuggestion(suggestion) {
+    setShowSuggestions(false)
+    setSearchInput(suggestion.label)
+
+    if (suggestion.type === 'property') {
+      setSearchCoords(null)
+      setHighlightAddress(suggestion.label)
+    } else {
+      setHighlightAddress(null)
+      setSearchCoords(suggestion.coords)
+    }
+  }
+
+  function handleSearchSubmit(e) {
+    e?.preventDefault()
+    if (suggestions.length > 0) {
+      handleSelectSuggestion(suggestions[0])
+    }
   }
 
   function clearSearch() {
     setSearchInput('')
     setSearchCoords(null)
     setHighlightAddress(null)
+    setSuggestions([])
+    setShowSuggestions(false)
   }
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   function pinCurrentAsSubject() {
     if (!searchCoords) return
@@ -657,26 +715,78 @@ export default function RentComparablesPage({ onBack }) {
       {view === 'map' && (
         <div className="contents page-in">
           <div className="px-6 py-3 flex items-center gap-3 border-b border-border bg-white flex-shrink-0">
-            <form onSubmit={handleAddressSearch} className="flex-1 relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#aaa]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search address — matches listings or pins location on map..."
-                className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {searchInput && (
-                  <button type="button" onClick={clearSearch} className="w-6 h-6 flex items-center justify-center text-[#aaa] hover:text-[#555]">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </form>
+            <div ref={searchRef} className="flex-1 relative">
+              <form onSubmit={handleSearchSubmit}>
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#aaa] z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={searchInput}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  placeholder="Search address — your properties or any location..."
+                  className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
+                  autoComplete="off"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                  {searchInput && (
+                    <button type="button" onClick={clearSearch} className="w-6 h-6 flex items-center justify-center text-[#aaa] hover:text-[#555]">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+                  {suggestions.some((s) => s.type === 'property') && (
+                    <div>
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-[#999] uppercase tracking-wider bg-surface border-b border-border">
+                        Your Properties
+                      </div>
+                      {suggestions.filter((s) => s.type === 'property').map((s) => (
+                        <button
+                          key={s.label}
+                          onClick={() => handleSelectSuggestion(s)}
+                          className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-primary/5 transition-colors border-b border-border last:border-0"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                          </div>
+                          <span className="text-sm text-primary truncate">{s.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {suggestions.some((s) => s.type === 'location') && (
+                    <div>
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-[#999] uppercase tracking-wider bg-surface border-b border-border">
+                        Locations
+                      </div>
+                      {suggestions.filter((s) => s.type === 'location').map((s, i) => (
+                        <button
+                          key={`${s.label}-${i}`}
+                          onClick={() => handleSelectSuggestion(s)}
+                          className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-primary/5 transition-colors border-b border-border last:border-0"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <span className="text-sm text-[#555] truncate">{s.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Set as Subject Property button */}
             <button
