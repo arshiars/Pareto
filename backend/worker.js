@@ -6,6 +6,7 @@ import { PDFDocument } from 'pdf-lib'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { buildAppraisalPrompt, buildRentRollPrompt } from './utils/dummyExtractionPrompt.js'
+import { applyQuebecConversions } from './utils/quebecUnits.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '../.env') })
@@ -437,6 +438,7 @@ async function insertUnits(supabase, propertyId, units, sourceFile) {
         property_id: propertyId,
         unit_number: unit.unit_number ?? null,
         unit_type: unit.unit_type ?? null,
+        unit_type_original: unit.unit_type_original ?? null,
         beds: unit.beds != null ? String(unit.beds) : null,
         baths: unit.baths != null ? String(unit.baths) : null,
         sqft: unit.sqft != null ? Number(unit.sqft) || null : null,
@@ -480,6 +482,12 @@ async function processAndStorePdf(s3, supabase, pdfKey, docType, propertyId, add
       const state = await incrementRetry(s3, pdfKey, 'Claude returned no extractable data', lastRawResponse)
       if (state.attempts >= MAX_RETRIES) await deadLetter(s3, pdfKey, state)
       return { propertyId, skipped: true }
+    }
+
+    // ── Quebec unit conversion (province-aware) ──
+    const qcResult = applyQuebecConversions(extractedData, address)
+    if (qcResult.converted) {
+      console.log(`[Worker]   Quebec property detected — converted ${qcResult.count} unit(s) to standard format`)
     }
 
     // ── DB writes (the critical section) ──
