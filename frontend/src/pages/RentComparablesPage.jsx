@@ -13,6 +13,9 @@ import {
   updateUnit,
   renamePropertyAddress,
   uploadFilesToS3,
+  uploadPropertyImage,
+  setPreviewImage,
+  deletePropertyImage,
 } from '../services/api.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -237,6 +240,139 @@ function PropertyDetailsPanel({ detail }) {
   )
 }
 
+// ─── Property Image Gallery ──────────────────────────────────────────────────
+
+function PropertyImageGallery({ propertyId, images, onImagesChange }) {
+  const [uploading, setUploading] = useState(false)
+  const [settingPreview, setSettingPreview] = useState(null)
+  const [deleting, setDeleting] = useState(null)
+  const fileInputRef = useRef(null)
+
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    setUploading(true)
+    try {
+      const isFirst = images.length === 0
+      for (let i = 0; i < files.length; i++) {
+        const asPreview = isFirst && i === 0
+        const saved = await uploadPropertyImage(propertyId, files[i], asPreview)
+        onImagesChange((prev) => [saved, ...prev])
+      }
+    } catch {}
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleSetPreview(imageId) {
+    setSettingPreview(imageId)
+    try {
+      await setPreviewImage(propertyId, imageId)
+      onImagesChange((prev) =>
+        prev.map((img) => ({ ...img, is_preview: img.id === imageId }))
+      )
+    } catch {}
+    setSettingPreview(null)
+  }
+
+  async function handleDelete(imageId) {
+    setDeleting(imageId)
+    try {
+      await deletePropertyImage(propertyId, imageId)
+      onImagesChange((prev) => prev.filter((img) => img.id !== imageId))
+    } catch {}
+    setDeleting(null)
+  }
+
+  const previewImage = images.find((img) => img.is_preview)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-primary flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Property Images
+          {previewImage && <span className="text-[10px] text-[#999] font-normal ml-1">· preview set</span>}
+        </h3>
+        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+          uploading ? 'bg-surface border-border text-[#999]' : 'bg-white border-border text-primary hover:border-primary'
+        }`}>
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {uploading ? 'Uploading...' : 'Upload Images'}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleUpload}
+            disabled={uploading}
+          />
+        </label>
+      </div>
+
+      {images.length === 0 ? (
+        <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+          <p className="text-xs text-[#999]">No images uploaded. Upload images to replace the default Street View preview.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {images.map((img) => (
+            <div key={img.id} className={`relative group rounded-lg overflow-hidden border-2 transition-colors ${
+              img.is_preview ? 'border-primary' : 'border-border hover:border-primary/40'
+            }`}>
+              <div className="aspect-[4/3] bg-surface">
+                {img.url ? (
+                  <img src={img.url} alt={img.filename ?? ''} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[#ccc]">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+
+              {img.is_preview && (
+                <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-primary text-white text-[9px] font-bold uppercase tracking-wider rounded">
+                  Preview
+                </div>
+              )}
+
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-center opacity-0 group-hover:opacity-100 pb-2 gap-1.5">
+                {!img.is_preview && (
+                  <button
+                    onClick={() => handleSetPreview(img.id)}
+                    disabled={settingPreview === img.id}
+                    className="px-2 py-1 bg-white text-primary text-[10px] font-semibold rounded shadow hover:bg-primary hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {settingPreview === img.id ? '...' : 'Set as Preview'}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(img.id)}
+                  disabled={deleting === img.id}
+                  className="px-2 py-1 bg-white text-red-500 text-[10px] font-semibold rounded shadow hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {deleting === img.id ? '...' : 'Delete'}
+                </button>
+              </div>
+
+              <div className="px-2 py-1.5 bg-white">
+                <p className="text-[10px] text-[#777] truncate">{img.filename ?? 'image'}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Filename parsing ─────────────────────────────────────────────────────────
 
 const APPRAISAL_RE = /^(.+?)\s*-\s*Appraisal\.pdf$/i
@@ -358,6 +494,7 @@ export default function RentComparablesPage({ onBack }) {
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState(null)
   const [propertyDetail, setPropertyDetail] = useState(null)
+  const [propertyImages, setPropertyImages] = useState([])
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [expandedProperties, setExpandedProperties] = useState(new Set())
   const [renamingPropertyId, setRenamingPropertyId] = useState(null)
@@ -661,11 +798,15 @@ export default function RentComparablesPage({ onBack }) {
     if (view === 'property' && selectedPropertyId) {
       setLoadingDetail(true)
       fetchPropertyDetail(selectedPropertyId)
-        .then((data) => setPropertyDetail(data.property ?? null))
-        .catch(() => setPropertyDetail(null))
+        .then((data) => {
+          setPropertyDetail(data.property ?? null)
+          setPropertyImages(data.images ?? [])
+        })
+        .catch(() => { setPropertyDetail(null); setPropertyImages([]) })
         .finally(() => setLoadingDetail(false))
     } else {
       setPropertyDetail(null)
+      setPropertyImages([])
     }
   }, [view, selectedPropertyId])
 
@@ -1430,7 +1571,7 @@ export default function RentComparablesPage({ onBack }) {
               {/* Map + Street View */}
               <div className="mb-6">
                 <Suspense fallback={<div className="h-[260px] rounded-xl bg-surface border border-border flex items-center justify-center text-xs text-[#999]">Loading map…</div>}>
-                  <PropertyMap address={selectedProperty} />
+                  <PropertyMap address={selectedProperty} previewImageUrl={propertyImages.find((img) => img.is_preview)?.url ?? null} />
                 </Suspense>
               </div>
 
@@ -1455,6 +1596,17 @@ export default function RentComparablesPage({ onBack }) {
                   </Card>
                 )}
               </div>
+
+              {/* Property Images */}
+              {selectedPropertyId && (
+                <div className="mb-6">
+                  <PropertyImageGallery
+                    propertyId={selectedPropertyId}
+                    images={propertyImages}
+                    onImagesChange={setPropertyImages}
+                  />
+                </div>
+              )}
 
               {/* Units */}
               <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">

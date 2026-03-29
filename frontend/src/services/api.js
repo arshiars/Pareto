@@ -191,6 +191,55 @@ export async function deleteProperty(propertyId) {
   return res.json()
 }
 
+// ─── Property Images ─────────────────────────────────────────────────────────
+
+export async function uploadPropertyImage(propertyId, file, setAsPreview = false) {
+  const presignRes = await fetch(`${BASE_URL}/comparables/property/${propertyId}/images/presign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+  })
+  if (!presignRes.ok) throw new Error(await parseError(presignRes))
+  const { uploadUrl, s3Key, contentType } = await presignRes.json()
+
+  const putRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: file,
+  })
+  if (!putRes.ok) throw new Error(`S3 upload failed: HTTP ${putRes.status}`)
+
+  const saveRes = await fetch(`${BASE_URL}/comparables/property/${propertyId}/images`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ s3Key, filename: file.name, setAsPreview }),
+  })
+  if (!saveRes.ok) throw new Error(await parseError(saveRes))
+  return saveRes.json()
+}
+
+export async function setPreviewImage(propertyId, imageId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/images/${imageId}/preview`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function deletePropertyImage(propertyId, imageId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/images/${imageId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
 // ─── S3 Pipeline Upload ─────────────────────────────────────────────────────
 
 export async function uploadFilesToS3(address, docType, files) {
