@@ -226,6 +226,115 @@ export async function uploadFilesToS3(address, docType, files) {
   return results
 }
 
+// ─── Triple-C QS Report Upload ───────────────────────────────────────────────
+
+export async function extractTripleCFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${BASE_URL}/triple-c/extract`, {
+    method: 'POST',
+    headers: authHeaders(),
+    credentials: 'include',
+    body: formData,
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json() // { extracted, fileName }
+}
+
+export async function fetchTripleCProjects() {
+  const res = await fetch(`${BASE_URL}/triple-c/projects`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  const { projects } = await res.json()
+  return projects
+}
+
+export async function fetchTripleCProject(id) {
+  const res = await fetch(`${BASE_URL}/triple-c/projects/${id}`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json() // { project, divisions, milestones }
+}
+
+export async function saveTripleCProject(payload) {
+  const res = await fetch(`${BASE_URL}/triple-c/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json() // { success, projectId }
+}
+
+export async function deleteTripleCProject(id) {
+  const res = await fetch(`${BASE_URL}/triple-c/projects/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function updateTripleCProject(id, payload) {
+  const res = await fetch(`${BASE_URL}/triple-c/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function fetchTripleCAnalytics(filters = {}) {
+  const params = new URLSearchParams()
+  if (filters.type) params.set('type', filters.type)
+  if (filters.province) params.set('province', filters.province)
+  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom)
+  if (filters.dateTo) params.set('dateTo', filters.dateTo)
+  if (filters.gfaMin) params.set('gfaMin', filters.gfaMin)
+  if (filters.gfaMax) params.set('gfaMax', filters.gfaMax)
+  if (filters.exclude) params.set('exclude', filters.exclude)
+  const qs = params.toString()
+  const res = await fetch(`${BASE_URL}/triple-c/analytics${qs ? '?' + qs : ''}`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function fetchTripleCComparison(ids) {
+  const res = await fetch(`${BASE_URL}/triple-c/compare?ids=${ids.join(',')}`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function uploadTripleCFiles(files) {
+  const formData = new FormData()
+  files.forEach((f) => formData.append('files', f))
+
+  const res = await fetch(`${BASE_URL}/triple-c/upload`, {
+    method: 'POST',
+    headers: authHeaders(),
+    credentials: 'include',
+    body: formData,
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  const { uploads } = await res.json()
+  return uploads
+}
+
 export async function fetchPipelineStatus() {
   const res = await fetch(`${BASE_URL}/pipeline/status`, {
     credentials: 'include',
