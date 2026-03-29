@@ -1,5 +1,7 @@
 import { useCallback, useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
+import { slugify, matchesSlug } from '../utils/slug.js'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 const ComparablesMap = lazy(() => import('../components/ComparablesMap.jsx'))
@@ -76,7 +78,7 @@ function PageHeader({ onBack }) {
           <div className="h-6 w-px bg-border" />
           <div>
             <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-            <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Deal Processor</p>
+            <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
           </div>
           <div className="h-6 w-px bg-border" />
           <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
@@ -474,8 +476,23 @@ function UploadDropzone({ files, onAdd, onRemove }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function RentComparablesPage({ onBack }) {
-  const [view, setView] = useState('map')
+export default function RentComparablesPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const BASE = '/comparable-analysis/rent-comparables'
+
+  // Derive view from URL path
+  const pathSuffix = location.pathname.replace(BASE, '').replace(/^\//, '')
+  const view = pathSuffix === 'upload' ? 'upload'
+    : pathSuffix === 'comptable' ? 'comptable'
+    : pathSuffix.startsWith('property/') ? 'property'
+    : 'map'
+
+  function setView(v) {
+    if (v === 'map') navigate(BASE)
+    else navigate(`${BASE}/${v}`)
+  }
 
   // Upload state
   const [uploadFiles, setUploadFiles] = useState([])
@@ -491,6 +508,10 @@ export default function RentComparablesPage({ onBack }) {
   const [editingValues, setEditingValues] = useState({})
   const [savingEdit, setSavingEdit] = useState(false)
   const [historyView, setHistoryView] = useState('list')
+  // The slug from the URL — used to resolve selectedProperty once history loads
+  const propertySlug = view === 'property'
+    ? location.pathname.replace(`${BASE}/property/`, '')
+    : null
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState(null)
   const [propertyDetail, setPropertyDetail] = useState(null)
@@ -532,8 +553,19 @@ export default function RentComparablesPage({ onBack }) {
     setSelectedProperty(address)
     const match = history.find((u) => u.property_address === address)
     setSelectedPropertyId(match?.property_id ?? null)
-    setView('property')
-  }, [history])
+    navigate(`${BASE}/property/${slugify(address)}`)
+  }, [history, navigate])
+
+  // Resolve selectedProperty + selectedPropertyId from URL slug once history loads
+  useEffect(() => {
+    if (propertySlug && history.length > 0 && !selectedProperty) {
+      const match = history.find((u) => matchesSlug(u.property_address, propertySlug))
+      if (match) {
+        setSelectedProperty(match.property_address)
+        setSelectedPropertyId(match.property_id)
+      }
+    }
+  }, [propertySlug, history, selectedProperty])
 
   // ── Upload helpers ───────────────────────────────────────────────────────
 
@@ -839,7 +871,7 @@ export default function RentComparablesPage({ onBack }) {
 
   return (
     <div className={`bg-background flex flex-col ${view === 'map' || view === 'comptable' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
-      <PageHeader onBack={view === 'comptable' ? () => setView('map') : onBack} />
+      <PageHeader onBack={view !== 'map' ? () => { navigate(BASE); setSelectedProperty(null); setSelectedPropertyId(null) } : () => navigate('/comparable-analysis')} />
 
       {error && (
         <div className="px-8 pt-4 flex-shrink-0">
@@ -1010,7 +1042,6 @@ export default function RentComparablesPage({ onBack }) {
             <CompTable
               selectedAddresses={selectedAddresses}
               units={history}
-              onBack={() => setView('map')}
               onSelectProperty={handleSelectProperty}
               pinStarCoords={pinStarCoords}
             />
@@ -1026,16 +1057,11 @@ export default function RentComparablesPage({ onBack }) {
         ══════════════════════════════════════════════════════ */}
         {view === 'upload' && (
           <div className="max-w-3xl mx-auto">
-            <div className="mb-6 flex items-start justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-primary tracking-tight">Add Properties</h2>
-                <p className="text-[#777777] mt-1 text-sm">
-                  Drop all your PDFs at once — appraisals and rent rolls for one or many properties.
-                </p>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => setView('map')}>
-                Back to Map
-              </Button>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-primary tracking-tight">Add Properties</h2>
+              <p className="text-[#777777] mt-1 text-sm">
+                Drop all your PDFs at once — appraisals and rent rolls for one or many properties.
+              </p>
             </div>
 
             {/* Uploading progress */}
@@ -1098,7 +1124,7 @@ export default function RentComparablesPage({ onBack }) {
 
                 <div className="flex justify-end">
                   <Button variant="primary" onClick={handleUploadDone}>
-                    Back to Map
+                    Done
                   </Button>
                 </div>
               </Card>
@@ -1510,23 +1536,9 @@ export default function RentComparablesPage({ onBack }) {
 
           return (
             <div className="max-w-7xl mx-auto">
-              <div className="mb-6 flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { setView('map'); setSelectedProperty(null); setSelectedPropertyId(null) }}
-                    className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Back to Map
-                  </button>
-                  <div className="h-4 w-px bg-border" />
-                  <div>
-                    <h2 className="text-2xl font-bold text-primary tracking-tight">{selectedProperty}</h2>
-                    <p className="text-[#777777] mt-0.5 text-sm">{propertyUnits.length} unit{propertyUnits.length !== 1 ? 's' : ''}</p>
-                  </div>
-                </div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-primary tracking-tight">{selectedProperty}</h2>
+                <p className="text-[#777777] mt-0.5 text-sm">{propertyUnits.length} unit{propertyUnits.length !== 1 ? 's' : ''}</p>
               </div>
 
               <div className="grid grid-cols-4 gap-4 mb-6">
