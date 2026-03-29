@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { slugify } from '../utils/slug.js'
 import TripleCDatabasePage from './TripleCDatabasePage.jsx'
 import TripleCUploadPage from './TripleCUploadPage.jsx'
 import TripleCReviewPage from './TripleCReviewPage.jsx'
@@ -7,24 +8,51 @@ import TripleCProjectPage from './TripleCProjectPage.jsx'
 import TripleCAnalyticsPage from './TripleCAnalyticsPage.jsx'
 import TripleCComparePage from './TripleCComparePage.jsx'
 import { fetchTripleCProject } from '../services/api.js'
+
+const BASE = '/triple-c'
+
 export default function TripleCApp() {
   const navigate = useNavigate()
-  const [page, setPage] = useState('database')
+  const location = useLocation()
+
+  // Derive view from URL path
+  const pathSuffix = location.pathname.replace(BASE, '').replace(/^\//, '')
+  const view = pathSuffix === 'upload' ? 'upload'
+    : pathSuffix === 'analytics' ? 'analytics'
+    : pathSuffix === 'compare' ? 'compare'
+    : pathSuffix.startsWith('project/') ? 'project'
+    : pathSuffix === 'review' ? 'review'
+    : pathSuffix === 'edit' ? 'edit'
+    : 'database'
+
+  // Extract project ID from URL for project detail view (format: "42-project-name-slug")
+  const projectSlug = view === 'project'
+    ? pathSuffix.replace('project/', '')
+    : null
+  const projectIdFromUrl = projectSlug ? parseInt(projectSlug, 10) : null
+
   const [currentData, setCurrentData] = useState(null)  // { extracted, fileName, remaining[] }
-  const [selectedProjectId, setSelectedProjectId] = useState(null)
+  const [selectedProjectId, setSelectedProjectId] = useState(projectIdFromUrl)
   const [editProjectId, setEditProjectId] = useState(null)
   const [processing, setProcessing] = useState(false)
   const [compareIds, setCompareIds] = useState([])
 
+  // Sync selectedProjectId when URL changes
+  useEffect(() => {
+    if (projectIdFromUrl && projectIdFromUrl !== selectedProjectId) {
+      setSelectedProjectId(projectIdFromUrl)
+    }
+  }, [projectIdFromUrl])
+
   function goToUpload() {
     setCurrentData(null)
-    setPage('upload')
+    navigate(`${BASE}/upload`)
   }
 
   // Called by UploadPage with { extracted, fileName, remaining }
   function goToReview(data) {
     setCurrentData(data)
-    setPage('review')
+    navigate(`${BASE}/review`)
   }
 
   // Open a saved project in edit mode
@@ -79,7 +107,7 @@ export default function TripleCApp() {
       }
       setCurrentData({ extracted, fileName: project.source_file ?? project.name })
       setEditProjectId(projectId)
-      setPage('edit')
+      navigate(`${BASE}/edit`)
     } catch (err) {
       alert(`Failed to load project for editing: ${err.message}`)
     } finally {
@@ -93,7 +121,7 @@ export default function TripleCApp() {
 
     if (remaining.length === 0) {
       setCurrentData(null)
-      setPage('database')
+      navigate(BASE)
       return
     }
 
@@ -104,7 +132,7 @@ export default function TripleCApp() {
     try {
       const result = await extractTripleCFile(nextFile)
       setCurrentData({ ...result, remaining: remaining.slice(1) })
-      setPage('review')
+      navigate(`${BASE}/review`)
     } catch (err) {
       alert(`Failed to extract "${nextFile.name}": ${err.message}`)
       if (remaining.length > 1) {
@@ -112,14 +140,14 @@ export default function TripleCApp() {
         try {
           const result2 = await extractTripleCFile(nextNext)
           setCurrentData({ ...result2, remaining: remaining.slice(2) })
-          setPage('review')
+          navigate(`${BASE}/review`)
         } catch {
           setCurrentData(null)
-          setPage('database')
+          navigate(BASE)
         }
       } else {
         setCurrentData(null)
-        setPage('database')
+        navigate(BASE)
       }
     } finally {
       setProcessing(false)
@@ -130,7 +158,11 @@ export default function TripleCApp() {
     setCurrentData(null)
     setEditProjectId(null)
     // Go back to the project detail so user can see updated data
-    setPage('project')
+    if (selectedProjectId) {
+      navigate(`${BASE}/project/${selectedProjectId}`)
+    } else {
+      navigate(BASE)
+    }
   }
 
   if (processing) {
@@ -147,29 +179,29 @@ export default function TripleCApp() {
     )
   }
 
-  if (page === 'analytics') {
-    return <TripleCAnalyticsPage onBack={() => setPage('database')} />
+  if (view === 'analytics') {
+    return <TripleCAnalyticsPage onBack={() => navigate(BASE)} />
   }
 
-  if (page === 'compare') {
-    return <TripleCComparePage onBack={() => setPage('database')} initialIds={compareIds} />
+  if (view === 'compare') {
+    return <TripleCComparePage onBack={() => navigate(BASE)} initialIds={compareIds} />
   }
 
-  if (page === 'project' && selectedProjectId) {
+  if (view === 'project' && projectIdFromUrl) {
     return (
       <TripleCProjectPage
-        projectId={selectedProjectId}
-        onBack={() => setPage('database')}
+        projectId={projectIdFromUrl}
+        onBack={() => navigate(BASE)}
         onEdit={(id) => goToEdit(id)}
       />
     )
   }
 
-  if (page === 'upload') {
-    return <TripleCUploadPage onBack={() => setPage('database')} onExtracted={goToReview} />
+  if (view === 'upload') {
+    return <TripleCUploadPage onBack={() => navigate(BASE)} onExtracted={goToReview} />
   }
 
-  if (page === 'review' && currentData) {
+  if (view === 'review' && currentData) {
     const queueSize = (currentData.remaining?.length ?? 0) + 1
     return (
       <TripleCReviewPage
@@ -181,13 +213,13 @@ export default function TripleCApp() {
     )
   }
 
-  if (page === 'edit' && currentData && editProjectId) {
+  if (view === 'edit' && currentData && editProjectId) {
     return (
       <TripleCReviewPage
         data={currentData}
         projectId={editProjectId}
         onSaved={onEditDone}
-        onDiscard={() => { setCurrentData(null); setEditProjectId(null); setPage('project') }}
+        onDiscard={() => { setCurrentData(null); setEditProjectId(null); navigate(`${BASE}/project/${selectedProjectId}`) }}
       />
     )
   }
@@ -196,9 +228,13 @@ export default function TripleCApp() {
     <TripleCDatabasePage
       onBack={() => navigate('/')}
       onAddProject={goToUpload}
-      onSelectProject={(id) => { setSelectedProjectId(id); setPage('project') }}
-      onViewAnalytics={() => setPage('analytics')}
-      onCompare={(ids) => { setCompareIds(ids); setPage('compare') }}
+      onSelectProject={(id, project) => {
+        setSelectedProjectId(id)
+        const slug = slugify([project?.name, project?.address, project?.city].filter(Boolean).join(' '))
+        navigate(`${BASE}/project/${id}${slug ? `-${slug}` : ''}`)
+      }}
+      onViewAnalytics={() => navigate(`${BASE}/analytics`)}
+      onCompare={(ids) => { setCompareIds(ids); navigate(`${BASE}/compare`) }}
     />
   )
 }

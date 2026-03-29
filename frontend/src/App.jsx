@@ -60,7 +60,7 @@ export default function App() {
       <Route path="/cmhc-database/:slug" element={<CMHCDatabasePage />} />
       <Route path="/comparable-analysis" element={<ComparableAnalysisPage />} />
       <Route path="/comparable-analysis/rent-comparables/*" element={<RentComparablesPage />} />
-      <Route path="/triple-c" element={<TripleCApp />} />
+      <Route path="/triple-c/*" element={<TripleCApp />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

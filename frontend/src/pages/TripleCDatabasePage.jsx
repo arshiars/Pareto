@@ -323,7 +323,7 @@ export default function TripleCDatabasePage({ onBack, onAddProject, onSelectProj
                   const isCompareSelected = compareIds.includes(p.id)
                   return (
                     <tr key={p.id}
-                      onClick={() => compareMode ? toggleCompareId(p.id) : onSelectProject(p.id)}
+                      onClick={() => compareMode ? toggleCompareId(p.id) : onSelectProject(p.id, p)}
                       className={`transition-colors cursor-pointer group ${
                         compareMode && isCompareSelected ? 'bg-blue-50 hover:bg-blue-50/80' : 'hover:bg-surface'
                       }`}
