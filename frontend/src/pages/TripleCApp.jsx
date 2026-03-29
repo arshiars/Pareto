@@ -25,11 +25,12 @@ export default function TripleCApp() {
     : pathSuffix === 'edit' ? 'edit'
     : 'database'
 
-  // Extract project ID from URL for project detail view (format: "42-project-name-slug")
-  const projectSlug = view === 'project'
-    ? pathSuffix.replace('project/', '')
-    : null
-  const projectIdFromUrl = projectSlug ? parseInt(projectSlug, 10) : null
+  // Extract project ID (UUID) from URL for project detail view
+  // Format: "project/<uuid>" or "project/<uuid>-slug"
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+  const projectPathPart = view === 'project' ? pathSuffix.replace('project/', '') : null
+  const uuidMatch = projectPathPart?.match(UUID_RE)
+  const projectIdFromUrl = uuidMatch ? uuidMatch[0] : null
 
   const [currentData, setCurrentData] = useState(null)  // { extracted, fileName, remaining[] }
   const [selectedProjectId, setSelectedProjectId] = useState(projectIdFromUrl)
