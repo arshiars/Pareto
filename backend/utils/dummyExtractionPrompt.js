@@ -3,6 +3,7 @@ const PROPERTY_FIELDS_SCHEMA = `{
   "property_type": "e.g. Multi-residential, Commercial, Mixed-use",
   "zoning": "Zoning designation",
   "municipality": "City/municipality name",
+  "province": "Province code (e.g. ON, QC, BC, AB)",
   "cadastre_reference": "Cadastre or lot number",
   "year_built": "Year constructed",
   "num_floors": "Number of floors/storeys",
@@ -158,9 +159,9 @@ const PROPERTY_FIELDS_SCHEMA = `{
 
 const UNIT_FIELDS_SCHEMA = `{
   "unit_number": "Unit identifier",
-  "unit_type": "Unit type description (e.g. 1BR, 2BR, Studio, Bachelor)",
-  "beds": "Number of bedrooms (numeric)",
-  "baths": "Number of bathrooms (numeric)",
+  "unit_type": "Unit type description exactly as shown in document (e.g. 1BR, 2BR, Studio, 3½, 4½)",
+  "beds": "Number of bedrooms (numeric). Leave null if unit_type is Quebec notation like 3½ — conversion is handled downstream",
+  "baths": "Number of bathrooms (numeric). Leave null if unit_type is Quebec notation like 3½",
   "sqft": 650,
   "lease_rate": 1850.00,
   "move_in": "YYYY-MM-DD",
@@ -203,7 +204,9 @@ ${SHARED_RULES}
 - lease_rate: monthly rent in CAD as a plain number
 - beds/baths: numeric values (e.g. 1, 1.5, 2)
 - sqft: numeric, no commas
-- move_in/move_out: YYYY-MM-DD format, move_out null means currently occupied${multiPartNote(partNumber, totalParts, existingData)}`
+- move_in/move_out: YYYY-MM-DD format, move_out null means currently occupied
+- IMPORTANT: Quebec properties use a "pièces" system (e.g. 3½, 4½, 5½). If you see this notation, put the EXACT value (e.g. "3½") in unit_type and leave beds/baths as null — do NOT convert it yourself
+- province: extract the 2-letter province code (QC, ON, BC, AB, etc.) from the address or document context${multiPartNote(partNumber, totalParts, existingData)}`
 }
 
 export function buildRentRollPrompt(partNumber, totalParts, existingData) {
@@ -227,5 +230,7 @@ ${SHARED_RULES}
 - sqft: numeric square footage with no commas
 - move_in / move_out: ISO 8601 format YYYY-MM-DD
 - move_out null means currently occupied with no stated end date
-- If a unit appears vacant (no tenant, no rent), still include it with lease_rate as null${multiPartNote(partNumber, totalParts, existingData)}`
+- If a unit appears vacant (no tenant, no rent), still include it with lease_rate as null
+- IMPORTANT: Quebec properties use a "pièces" system (e.g. 3½, 4½, 5½). If you see this notation, put the EXACT value (e.g. "3½") in unit_type and leave beds/baths as null — do NOT convert it yourself
+- province: if you can determine the province from the address or document, include "province" at the top level (e.g. "QC", "ON")${multiPartNote(partNumber, totalParts, existingData)}`
 }

@@ -1,4 +1,8 @@
-export default function SelectionPage({ onSelect }) {
+import { useNavigate } from 'react-router-dom'
+
+export default function SelectionPage() {
+  const navigate = useNavigate()
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="bg-white border-b border-border">
@@ -6,7 +10,7 @@ export default function SelectionPage({ onSelect }) {
           <div className="flex items-center gap-4">
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Deal Processor</p>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
             <div className="h-6 w-px bg-border" />
             <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
@@ -17,13 +21,13 @@ export default function SelectionPage({ onSelect }) {
 
       <main className="flex-1 flex flex-col items-center justify-center px-8 py-16">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-primary tracking-tight">Select Deal Type</h2>
-          <p className="text-[#777777] mt-3 text-sm">Choose the underwriting program to proceed</p>
+          <h2 className="text-3xl font-bold text-primary tracking-tight">Select Underwriting Program</h2>
+          <p className="text-[#777777] mt-3 text-sm">Choose a program to begin your analysis</p>
         </div>
 
         <div className="grid grid-cols-2 gap-6 w-full max-w-2xl">
           <button
-            onClick={() => onSelect('cmhc')}
+            onClick={() => navigate('/cmhc')}
             className="group flex flex-col items-start p-8 bg-white border-2 border-border rounded-sm hover:border-primary hover:shadow-md transition-all duration-150 text-left"
           >
             <div className="w-10 h-10 rounded-sm bg-surface flex items-center justify-center mb-5 group-hover:bg-primary/10 transition-colors">
@@ -33,7 +37,7 @@ export default function SelectionPage({ onSelect }) {
             </div>
             <h3 className="text-primary font-bold text-xl mb-2">CMHC</h3>
             <p className="text-[#777777] text-sm leading-relaxed">
-              Canada Mortgage and Housing Corporation insured financing for multi-unit residential properties.
+              CMHC-insured mortgage financing for multi-unit residential properties.
             </p>
             <div className="mt-6 flex items-center gap-1.5 text-accent text-xs font-semibold uppercase tracking-wider">
               Select
@@ -44,7 +48,7 @@ export default function SelectionPage({ onSelect }) {
           </button>
 
           <button
-            onClick={() => onSelect('conventional')}
+            onClick={() => navigate('/conventional')}
             className="group flex flex-col items-start p-8 bg-white border-2 border-border rounded-sm hover:border-primary hover:shadow-md transition-all duration-150 text-left"
           >
             <div className="w-10 h-10 rounded-sm bg-surface flex items-center justify-center mb-5 group-hover:bg-primary/10 transition-colors">
@@ -54,7 +58,7 @@ export default function SelectionPage({ onSelect }) {
             </div>
             <h3 className="text-primary font-bold text-xl mb-2">Conventional</h3>
             <p className="text-[#777777] text-sm leading-relaxed">
-              Conventional financing analysis for commercial real estate acquisitions and refinancing.
+              Underwriting analysis for conventional commercial real estate acquisitions and refinancing.
             </p>
             <div className="mt-6 flex items-center gap-1.5 text-accent text-xs font-semibold uppercase tracking-wider">
               Select
@@ -67,7 +71,7 @@ export default function SelectionPage({ onSelect }) {
 
         <div className="mt-8 w-full max-w-2xl flex flex-col gap-3">
           <button
-            onClick={() => onSelect('cmhc-database')}
+            onClick={() => navigate('/cmhc-database')}
             className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
           >
             <div className="flex items-center gap-4">
@@ -77,8 +81,8 @@ export default function SelectionPage({ onSelect }) {
                 </svg>
               </div>
               <div className="text-left">
-                <span className="text-primary font-semibold text-sm">Approved CMHC Loan Database</span>
-                <p className="text-[#777777] text-xs mt-0.5">View and query approved CMHC loan records</p>
+                <span className="text-primary font-semibold text-sm">CMHC Loan Database</span>
+                <p className="text-[#777777] text-xs mt-0.5">Query and analyze approved CMHC mortgage loan records</p>
               </div>
             </div>
             <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
@@ -90,30 +94,7 @@ export default function SelectionPage({ onSelect }) {
           </button>
 
           <button
-            onClick={() => onSelect('loi-drafter')}
-            className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-8 h-8 rounded-sm bg-surface flex items-center justify-center group-hover:bg-primary/10 transition-colors flex-shrink-0">
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <span className="text-primary font-semibold text-sm">LOI Drafter</span>
-                <p className="text-[#777777] text-xs mt-0.5">Draft Letters of Intent for property acquisitions</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
-              Open
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-              </svg>
-            </div>
-          </button>
-
-          <button
-            onClick={() => onSelect('triple-c')}
+            onClick={() => navigate('/triple-c')}
             className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
           >
             <div className="flex items-center gap-4">
@@ -124,7 +105,7 @@ export default function SelectionPage({ onSelect }) {
               </div>
               <div className="text-left">
                 <span className="text-primary font-semibold text-sm">Triple-C</span>
-                <p className="text-[#777777] text-xs mt-0.5">QS report ingestion, cost benchmarking & proforma generation</p>
+                <p className="text-[#777777] text-xs mt-0.5">QS report ingestion, cost benchmarking and proforma generation</p>
               </div>
             </div>
             <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
@@ -136,7 +117,7 @@ export default function SelectionPage({ onSelect }) {
           </button>
 
           <button
-            onClick={() => onSelect('comparable-analysis')}
+            onClick={() => navigate('/comparable-analysis')}
             className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
           >
             <div className="flex items-center gap-4">
@@ -147,7 +128,7 @@ export default function SelectionPage({ onSelect }) {
               </div>
               <div className="text-left">
                 <span className="text-primary font-semibold text-sm">Comparable Analysis</span>
-                <p className="text-[#777777] text-xs mt-0.5">Analyze and compare property metrics across deals</p>
+                <p className="text-[#777777] text-xs mt-0.5">Analyze rental market comparables to establish benchmarks</p>
               </div>
             </div>
             <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">

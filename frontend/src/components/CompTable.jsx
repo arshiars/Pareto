@@ -449,7 +449,7 @@ function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CompTable({ selectedAddresses, units, onBack, onSelectProperty, pinStarCoords }) {
+export default function CompTable({ selectedAddresses, units, onSelectProperty, pinStarCoords }) {
   const [activeColumns, setActiveColumns] = useState(DEFAULT_COLUMN_KEYS)
   const [showAddColumn, setShowAddColumn] = useState(false)
   const [hiddenAddresses, setHiddenAddresses] = useState(new Set())
@@ -550,16 +550,6 @@ export default function CompTable({ selectedAddresses, units, onBack, onSelectPr
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-white flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-[#777] hover:text-primary transition-colors text-sm"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Map
-          </button>
-          <div className="h-5 w-px bg-border" />
           <h2 className="text-sm font-bold text-[#222]">Comparable Analysis</h2>
           <span className="text-xs text-[#999]">{selectedAddresses.size} properties</span>
         </div>

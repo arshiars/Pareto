@@ -195,7 +195,7 @@ function PropertyCard({ prop, searchCoords, onClick, isSelected, onToggleSelect 
       <div className="w-full h-[120px] rounded-lg overflow-hidden mb-3 bg-surface relative">
         {!imgError ? (
           <img
-            src={propertyImageUrl(prop.coords.lng, prop.coords.lat)}
+            src={prop.preview_image_url || propertyImageUrl(prop.coords.lng, prop.coords.lat)}
             alt=""
             className="w-full h-full object-cover"
             loading="lazy"
@@ -460,6 +460,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
         avgRent,
         beds,
         coords: { lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] },
+        preview_image_url: addressUnits[0]?.preview_image_url ?? null,
       }
     })
     props.sort((a, b) => b.unitCount - a.unitCount)
@@ -630,7 +631,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
               <div className="p-1 space-y-3">
                 <div className="w-full h-[100px] -mx-1 -mt-1 rounded overflow-hidden bg-surface relative">
                   <img
-                    src={propertyImageUrl(geocoded[selected].lng, geocoded[selected].lat)}
+                    src={addressUnits[0]?.preview_image_url || propertyImageUrl(geocoded[selected].lng, geocoded[selected].lat)}
                     alt=""
                     className="w-full h-full object-cover"
                   />

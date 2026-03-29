@@ -1,11 +1,15 @@
-export default function ComparableAnalysisPage({ onBack, onSelect }) {
+import { useNavigate } from 'react-router-dom'
+
+export default function ComparableAnalysisPage() {
+  const navigate = useNavigate()
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="bg-white border-b border-border">
         <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={onBack}
+              onClick={() => navigate('/')}
               className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -16,7 +20,7 @@ export default function ComparableAnalysisPage({ onBack, onSelect }) {
             <div className="h-6 w-px bg-border" />
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Deal Processor</p>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
             <div className="h-6 w-px bg-border" />
             <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
@@ -33,7 +37,7 @@ export default function ComparableAnalysisPage({ onBack, onSelect }) {
 
         <div className="w-full max-w-2xl">
           <button
-            onClick={() => onSelect('rent-comparables')}
+            onClick={() => navigate('/comparable-analysis/rent-comparables')}
             className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
           >
             <div className="flex items-center gap-4">
@@ -44,7 +48,7 @@ export default function ComparableAnalysisPage({ onBack, onSelect }) {
               </div>
               <div className="text-left">
                 <span className="text-primary font-semibold text-sm">Rent Comparables</span>
-                <p className="text-[#777777] text-xs mt-0.5">Compare rental rates across similar properties</p>
+                <p className="text-[#777777] text-xs mt-0.5">Analyze rental market data to establish market-rent benchmarks</p>
               </div>
             </div>
             <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">

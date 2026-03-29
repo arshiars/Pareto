@@ -99,10 +99,11 @@ export default function TripleCComparePage({ onBack, initialIds = [] }) {
       <header className="bg-white border-b border-border">
         <div className="max-w-7xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={onBack} className="text-[#777777] hover:text-primary transition-colors">
+            <button onClick={onBack} className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+              Back
             </button>
             <div className="h-6 w-px bg-border" />
             <div>

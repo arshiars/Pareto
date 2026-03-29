@@ -13,7 +13,7 @@ function streetViewUrl(lat, lng) {
   return null
 }
 
-export default function PropertyMap({ address }) {
+export default function PropertyMap({ address, previewImageUrl }) {
   const [coords, setCoords] = useState(null)
   const [loading, setLoading] = useState(true)
   const [imgError, setImgError] = useState(false)
@@ -79,9 +79,15 @@ export default function PropertyMap({ address }) {
         )}
       </div>
 
-      {/* Street View */}
+      {/* Property image / Street View */}
       <div className="rounded-xl overflow-hidden border border-border bg-surface" style={{ height: 260 }}>
-        {!coords || !svUrl ? (
+        {previewImageUrl ? (
+          <img
+            src={previewImageUrl}
+            alt={`Property photo of ${address}`}
+            className="w-full h-full object-cover"
+          />
+        ) : !coords || !svUrl ? (
           <div className="flex items-center justify-center h-full text-xs text-[#999]">
             {loading ? 'Loading…' : 'No street view available'}
           </div>

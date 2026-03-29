@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import TripleCDatabasePage from './TripleCDatabasePage.jsx'
 import TripleCUploadPage from './TripleCUploadPage.jsx'
 import TripleCReviewPage from './TripleCReviewPage.jsx'
@@ -6,7 +7,8 @@ import TripleCProjectPage from './TripleCProjectPage.jsx'
 import TripleCAnalyticsPage from './TripleCAnalyticsPage.jsx'
 import TripleCComparePage from './TripleCComparePage.jsx'
 import { fetchTripleCProject } from '../services/api.js'
-export default function TripleCApp({ onBack }) {
+export default function TripleCApp() {
+  const navigate = useNavigate()
   const [page, setPage] = useState('database')
   const [currentData, setCurrentData] = useState(null)  // { extracted, fileName, remaining[] }
   const [selectedProjectId, setSelectedProjectId] = useState(null)
@@ -192,7 +194,7 @@ export default function TripleCApp({ onBack }) {
 
   return (
     <TripleCDatabasePage
-      onBack={onBack}
+      onBack={() => navigate('/')}
       onAddProject={goToUpload}
       onSelectProject={(id) => { setSelectedProjectId(id); setPage('project') }}
       onViewAnalytics={() => setPage('analytics')}

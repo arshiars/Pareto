@@ -1,5 +1,7 @@
-import { useCallback, useState, useEffect, useMemo, lazy, Suspense } from 'react'
+import { useCallback, useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
+import { slugify, matchesSlug } from '../utils/slug.js'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 const ComparablesMap = lazy(() => import('../components/ComparablesMap.jsx'))
@@ -13,6 +15,9 @@ import {
   updateUnit,
   renamePropertyAddress,
   uploadFilesToS3,
+  uploadPropertyImage,
+  setPreviewImage,
+  deletePropertyImage,
 } from '../services/api.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -73,7 +78,7 @@ function PageHeader({ onBack }) {
           <div className="h-6 w-px bg-border" />
           <div>
             <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-            <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Deal Processor</p>
+            <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
           </div>
           <div className="h-6 w-px bg-border" />
           <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
@@ -237,6 +242,139 @@ function PropertyDetailsPanel({ detail }) {
   )
 }
 
+// ─── Property Image Gallery ──────────────────────────────────────────────────
+
+function PropertyImageGallery({ propertyId, images, onImagesChange }) {
+  const [uploading, setUploading] = useState(false)
+  const [settingPreview, setSettingPreview] = useState(null)
+  const [deleting, setDeleting] = useState(null)
+  const fileInputRef = useRef(null)
+
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    setUploading(true)
+    try {
+      const isFirst = images.length === 0
+      for (let i = 0; i < files.length; i++) {
+        const asPreview = isFirst && i === 0
+        const saved = await uploadPropertyImage(propertyId, files[i], asPreview)
+        onImagesChange((prev) => [saved, ...prev])
+      }
+    } catch {}
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleSetPreview(imageId) {
+    setSettingPreview(imageId)
+    try {
+      await setPreviewImage(propertyId, imageId)
+      onImagesChange((prev) =>
+        prev.map((img) => ({ ...img, is_preview: img.id === imageId }))
+      )
+    } catch {}
+    setSettingPreview(null)
+  }
+
+  async function handleDelete(imageId) {
+    setDeleting(imageId)
+    try {
+      await deletePropertyImage(propertyId, imageId)
+      onImagesChange((prev) => prev.filter((img) => img.id !== imageId))
+    } catch {}
+    setDeleting(null)
+  }
+
+  const previewImage = images.find((img) => img.is_preview)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-primary flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Property Images
+          {previewImage && <span className="text-[10px] text-[#999] font-normal ml-1">· preview set</span>}
+        </h3>
+        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+          uploading ? 'bg-surface border-border text-[#999]' : 'bg-white border-border text-primary hover:border-primary'
+        }`}>
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {uploading ? 'Uploading...' : 'Upload Images'}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleUpload}
+            disabled={uploading}
+          />
+        </label>
+      </div>
+
+      {images.length === 0 ? (
+        <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+          <p className="text-xs text-[#999]">No images uploaded. Upload images to replace the default Street View preview.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {images.map((img) => (
+            <div key={img.id} className={`relative group rounded-lg overflow-hidden border-2 transition-colors ${
+              img.is_preview ? 'border-primary' : 'border-border hover:border-primary/40'
+            }`}>
+              <div className="aspect-[4/3] bg-surface">
+                {img.url ? (
+                  <img src={img.url} alt={img.filename ?? ''} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[#ccc]">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+
+              {img.is_preview && (
+                <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-primary text-white text-[9px] font-bold uppercase tracking-wider rounded">
+                  Preview
+                </div>
+              )}
+
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end justify-center opacity-0 group-hover:opacity-100 pb-2 gap-1.5">
+                {!img.is_preview && (
+                  <button
+                    onClick={() => handleSetPreview(img.id)}
+                    disabled={settingPreview === img.id}
+                    className="px-2 py-1 bg-white text-primary text-[10px] font-semibold rounded shadow hover:bg-primary hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {settingPreview === img.id ? '...' : 'Set as Preview'}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(img.id)}
+                  disabled={deleting === img.id}
+                  className="px-2 py-1 bg-white text-red-500 text-[10px] font-semibold rounded shadow hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {deleting === img.id ? '...' : 'Delete'}
+                </button>
+              </div>
+
+              <div className="px-2 py-1.5 bg-white">
+                <p className="text-[10px] text-[#777] truncate">{img.filename ?? 'image'}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Filename parsing ─────────────────────────────────────────────────────────
 
 const APPRAISAL_RE = /^(.+?)\s*-\s*Appraisal\.pdf$/i
@@ -338,8 +476,23 @@ function UploadDropzone({ files, onAdd, onRemove }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function RentComparablesPage({ onBack }) {
-  const [view, setView] = useState('map')
+export default function RentComparablesPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const BASE = '/comparable-analysis/rent-comparables'
+
+  // Derive view from URL path
+  const pathSuffix = location.pathname.replace(BASE, '').replace(/^\//, '')
+  const view = pathSuffix === 'upload' ? 'upload'
+    : pathSuffix === 'comptable' ? 'comptable'
+    : pathSuffix.startsWith('property/') ? 'property'
+    : 'map'
+
+  function setView(v) {
+    if (v === 'map') navigate(BASE)
+    else navigate(`${BASE}/${v}`)
+  }
 
   // Upload state
   const [uploadFiles, setUploadFiles] = useState([])
@@ -355,9 +508,14 @@ export default function RentComparablesPage({ onBack }) {
   const [editingValues, setEditingValues] = useState({})
   const [savingEdit, setSavingEdit] = useState(false)
   const [historyView, setHistoryView] = useState('list')
+  // The slug from the URL — used to resolve selectedProperty once history loads
+  const propertySlug = view === 'property'
+    ? location.pathname.replace(`${BASE}/property/`, '')
+    : null
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [selectedPropertyId, setSelectedPropertyId] = useState(null)
   const [propertyDetail, setPropertyDetail] = useState(null)
+  const [propertyImages, setPropertyImages] = useState([])
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [expandedProperties, setExpandedProperties] = useState(new Set())
   const [renamingPropertyId, setRenamingPropertyId] = useState(null)
@@ -366,7 +524,10 @@ export default function RentComparablesPage({ onBack }) {
   const [addressSearch, setAddressSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [searchCoords, setSearchCoords] = useState(null)
-  const [searchLoading, setSearchLoading] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const searchRef = useRef(null)
+  const debounceRef = useRef(null)
   const [pinStarCoords, setPinStarCoords] = useState(null)
   const [subjectLabel, setSubjectLabel] = useState(null)
   const [highlightAddress, setHighlightAddress] = useState(null)
@@ -392,8 +553,19 @@ export default function RentComparablesPage({ onBack }) {
     setSelectedProperty(address)
     const match = history.find((u) => u.property_address === address)
     setSelectedPropertyId(match?.property_id ?? null)
-    setView('property')
-  }, [history])
+    navigate(`${BASE}/property/${slugify(address)}`)
+  }, [history, navigate])
+
+  // Resolve selectedProperty + selectedPropertyId from URL slug once history loads
+  useEffect(() => {
+    if (propertySlug && history.length > 0 && !selectedProperty) {
+      const match = history.find((u) => matchesSlug(u.property_address, propertySlug))
+      if (match) {
+        setSelectedProperty(match.property_address)
+        setSelectedPropertyId(match.property_id)
+      }
+    }
+  }, [propertySlug, history, selectedProperty])
 
   // ── Upload helpers ───────────────────────────────────────────────────────
 
@@ -466,40 +638,95 @@ export default function RentComparablesPage({ onBack }) {
     }
   }
 
-  async function handleAddressSearch(e) {
-    e?.preventDefault()
-    const query = searchInput.trim()
-    if (!query) return
+  const uniqueAddresses = useMemo(() => {
+    const set = new Set()
+    for (const u of history) {
+      if (u.property_address) set.add(u.property_address)
+    }
+    return [...set]
+  }, [history])
 
-    const matchedAddress = history.find(
-      (u) => u.property_address && u.property_address.toLowerCase().includes(query.toLowerCase())
-    )?.property_address
+  function handleSearchChange(value) {
+    setSearchInput(value)
+    clearTimeout(debounceRef.current)
 
-    if (matchedAddress) {
-      setSearchCoords(null)
-      setHighlightAddress(matchedAddress)
+    if (!value.trim()) {
+      setSuggestions([])
+      setShowSuggestions(false)
       return
     }
 
-    if (!MAPBOX_TOKEN) return
-    setSearchLoading(true)
-    setHighlightAddress(null)
-    try {
-      const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&limit=1`
-      )
-      const data = await res.json()
-      const center = data.features?.[0]?.center
-      if (center) setSearchCoords({ lng: center[0], lat: center[1] })
-    } catch {}
-    setSearchLoading(false)
+    const q = value.trim().toLowerCase()
+    const propertyMatches = uniqueAddresses
+      .filter((a) => a.toLowerCase().includes(q))
+      .slice(0, 5)
+      .map((a) => ({ type: 'property', label: a }))
+
+    setSuggestions(propertyMatches)
+    setShowSuggestions(true)
+
+    if (MAPBOX_TOKEN) {
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value.trim())}.json?access_token=${MAPBOX_TOKEN}&limit=5&country=ca&types=address,place,locality,neighborhood,postcode`
+          )
+          const data = await res.json()
+          const geoResults = (data.features ?? []).map((f) => ({
+            type: 'location',
+            label: f.place_name,
+            coords: { lng: f.center[0], lat: f.center[1] },
+          }))
+
+          setSuggestions((prev) => {
+            const props = prev.filter((s) => s.type === 'property')
+            return [...props, ...geoResults]
+          })
+        } catch {}
+      }, 300)
+    }
+  }
+
+  function handleSelectSuggestion(suggestion) {
+    setShowSuggestions(false)
+    setSearchInput(suggestion.label)
+
+    if (suggestion.type === 'property') {
+      setSearchCoords(null)
+      setHighlightAddress(suggestion.label)
+    } else {
+      setHighlightAddress(null)
+      setSearchCoords(suggestion.coords)
+    }
+  }
+
+  function handleSearchSubmit(e) {
+    e?.preventDefault()
+    if (suggestions.length > 0) {
+      handleSelectSuggestion(suggestions[0])
+    }
   }
 
   function clearSearch() {
     setSearchInput('')
     setSearchCoords(null)
     setHighlightAddress(null)
+    setSuggestions([])
+    setShowSuggestions(false)
   }
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   function pinCurrentAsSubject() {
     if (!searchCoords) return
@@ -603,11 +830,15 @@ export default function RentComparablesPage({ onBack }) {
     if (view === 'property' && selectedPropertyId) {
       setLoadingDetail(true)
       fetchPropertyDetail(selectedPropertyId)
-        .then((data) => setPropertyDetail(data.property ?? null))
-        .catch(() => setPropertyDetail(null))
+        .then((data) => {
+          setPropertyDetail(data.property ?? null)
+          setPropertyImages(data.images ?? [])
+        })
+        .catch(() => { setPropertyDetail(null); setPropertyImages([]) })
         .finally(() => setLoadingDetail(false))
     } else {
       setPropertyDetail(null)
+      setPropertyImages([])
     }
   }, [view, selectedPropertyId])
 
@@ -640,7 +871,7 @@ export default function RentComparablesPage({ onBack }) {
 
   return (
     <div className={`bg-background flex flex-col ${view === 'map' || view === 'comptable' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
-      <PageHeader onBack={view === 'comptable' ? () => setView('map') : onBack} />
+      <PageHeader onBack={view !== 'map' ? () => { navigate(BASE); setSelectedProperty(null); setSelectedPropertyId(null) } : () => navigate('/comparable-analysis')} />
 
       {error && (
         <div className="px-8 pt-4 flex-shrink-0">
@@ -657,26 +888,78 @@ export default function RentComparablesPage({ onBack }) {
       {view === 'map' && (
         <div className="contents page-in">
           <div className="px-6 py-3 flex items-center gap-3 border-b border-border bg-white flex-shrink-0">
-            <form onSubmit={handleAddressSearch} className="flex-1 relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#aaa]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search address — matches listings or pins location on map..."
-                className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {searchInput && (
-                  <button type="button" onClick={clearSearch} className="w-6 h-6 flex items-center justify-center text-[#aaa] hover:text-[#555]">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </form>
+            <div ref={searchRef} className="flex-1 relative">
+              <form onSubmit={handleSearchSubmit}>
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#aaa] z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={searchInput}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  placeholder="Search address — your properties or any location..."
+                  className="w-full pl-10 pr-10 py-2.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-primary"
+                  autoComplete="off"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                  {searchInput && (
+                    <button type="button" onClick={clearSearch} className="w-6 h-6 flex items-center justify-center text-[#aaa] hover:text-[#555]">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+                  {suggestions.some((s) => s.type === 'property') && (
+                    <div>
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-[#999] uppercase tracking-wider bg-surface border-b border-border">
+                        Your Properties
+                      </div>
+                      {suggestions.filter((s) => s.type === 'property').map((s) => (
+                        <button
+                          key={s.label}
+                          onClick={() => handleSelectSuggestion(s)}
+                          className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-primary/5 transition-colors border-b border-border last:border-0"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                          </div>
+                          <span className="text-sm text-primary truncate">{s.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {suggestions.some((s) => s.type === 'location') && (
+                    <div>
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-[#999] uppercase tracking-wider bg-surface border-b border-border">
+                        Locations
+                      </div>
+                      {suggestions.filter((s) => s.type === 'location').map((s, i) => (
+                        <button
+                          key={`${s.label}-${i}`}
+                          onClick={() => handleSelectSuggestion(s)}
+                          className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-primary/5 transition-colors border-b border-border last:border-0"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <span className="text-sm text-[#555] truncate">{s.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Set as Subject Property button */}
             <button
@@ -759,7 +1042,6 @@ export default function RentComparablesPage({ onBack }) {
             <CompTable
               selectedAddresses={selectedAddresses}
               units={history}
-              onBack={() => setView('map')}
               onSelectProperty={handleSelectProperty}
               pinStarCoords={pinStarCoords}
             />
@@ -775,16 +1057,11 @@ export default function RentComparablesPage({ onBack }) {
         ══════════════════════════════════════════════════════ */}
         {view === 'upload' && (
           <div className="max-w-3xl mx-auto">
-            <div className="mb-6 flex items-start justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-primary tracking-tight">Add Properties</h2>
-                <p className="text-[#777777] mt-1 text-sm">
-                  Drop all your PDFs at once — appraisals and rent rolls for one or many properties.
-                </p>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => setView('map')}>
-                Back to Map
-              </Button>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-primary tracking-tight">Add Properties</h2>
+              <p className="text-[#777777] mt-1 text-sm">
+                Drop all your PDFs at once — appraisals and rent rolls for one or many properties.
+              </p>
             </div>
 
             {/* Uploading progress */}
@@ -847,7 +1124,7 @@ export default function RentComparablesPage({ onBack }) {
 
                 <div className="flex justify-end">
                   <Button variant="primary" onClick={handleUploadDone}>
-                    Back to Map
+                    Done
                   </Button>
                 </div>
               </Card>
@@ -1259,23 +1536,9 @@ export default function RentComparablesPage({ onBack }) {
 
           return (
             <div className="max-w-7xl mx-auto">
-              <div className="mb-6 flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { setView('map'); setSelectedProperty(null); setSelectedPropertyId(null) }}
-                    className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Back to Map
-                  </button>
-                  <div className="h-4 w-px bg-border" />
-                  <div>
-                    <h2 className="text-2xl font-bold text-primary tracking-tight">{selectedProperty}</h2>
-                    <p className="text-[#777777] mt-0.5 text-sm">{propertyUnits.length} unit{propertyUnits.length !== 1 ? 's' : ''}</p>
-                  </div>
-                </div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-primary tracking-tight">{selectedProperty}</h2>
+                <p className="text-[#777777] mt-0.5 text-sm">{propertyUnits.length} unit{propertyUnits.length !== 1 ? 's' : ''}</p>
               </div>
 
               <div className="grid grid-cols-4 gap-4 mb-6">
@@ -1320,7 +1583,7 @@ export default function RentComparablesPage({ onBack }) {
               {/* Map + Street View */}
               <div className="mb-6">
                 <Suspense fallback={<div className="h-[260px] rounded-xl bg-surface border border-border flex items-center justify-center text-xs text-[#999]">Loading map…</div>}>
-                  <PropertyMap address={selectedProperty} />
+                  <PropertyMap address={selectedProperty} previewImageUrl={propertyImages.find((img) => img.is_preview)?.url ?? null} />
                 </Suspense>
               </div>
 
@@ -1345,6 +1608,17 @@ export default function RentComparablesPage({ onBack }) {
                   </Card>
                 )}
               </div>
+
+              {/* Property Images */}
+              {selectedPropertyId && (
+                <div className="mb-6">
+                  <PropertyImageGallery
+                    propertyId={selectedPropertyId}
+                    images={propertyImages}
+                    onImagesChange={setPropertyImages}
+                  />
+                </div>
+              )}
 
               {/* Units */}
               <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
