@@ -9,7 +9,7 @@ import { buildAppraisalPrompt, buildRentRollPrompt } from './utils/dummyExtracti
 import { applyQuebecConversions } from './utils/quebecUnits.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: join(__dirname, '../.env') })
+dotenv.config({ path: join(__dirname, '.env') })
 
 const MAX_PAGES_PER_CHUNK = 20
 const MAX_RETRIES = 3          // max attempts before dead-lettering a PDF

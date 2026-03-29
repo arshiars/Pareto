@@ -12,6 +12,7 @@ import IPPPage from './pages/IPPPage.jsx'
 import CMHCDatabasePage from './pages/CMHCDatabasePage.jsx'
 import ComparableAnalysisPage from './pages/ComparableAnalysisPage.jsx'
 import RentComparablesPage from './pages/RentComparablesPage.jsx'
+import TripleCApp from './pages/TripleCApp.jsx'
 import { checkAuth } from './services/api.js'
 
 function AppContent() {
@@ -59,6 +60,7 @@ export default function App() {
       <Route path="/cmhc-database/:slug" element={<CMHCDatabasePage />} />
       <Route path="/comparable-analysis" element={<ComparableAnalysisPage />} />
       <Route path="/comparable-analysis/rent-comparables/*" element={<RentComparablesPage />} />
+      <Route path="/triple-c/*" element={<TripleCApp />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
