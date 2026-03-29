@@ -20,7 +20,7 @@ import { createClient } from '@supabase/supabase-js'
 import { isQuebecProperty, quebecToStandard, isQuebecUnitType } from '../utils/quebecUnits.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: join(__dirname, '../../.env') })
+dotenv.config({ path: join(__dirname, '..', '.env') })
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
