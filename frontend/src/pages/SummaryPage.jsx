@@ -246,7 +246,7 @@ export default function SummaryPage() {
         <div className="bg-primary px-6 py-5">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-white text-lg font-bold">CMHC Underwriting — CMHC Deal Processor</h1>
+              <h1 className="text-white text-lg font-bold">Fundus — CMHC Underwriting</h1>
               <p className="text-white/60 text-sm mt-0.5">{propInfo?.address || 'Property Address Not Specified'}</p>
             </div>
             <div className="text-right">

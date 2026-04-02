@@ -1,4 +1,6 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { slugify, matchesSlug } from '../utils/slug.js'
 import * as XLSX from 'xlsx'
 import { supabase } from '../services/supabase.js'
 import { queryLoanDatabase } from '../services/api.js'
@@ -71,7 +73,7 @@ function ProvinceBadge({ province }) {
 
 const TABS = [
   { id: 'financing', label: 'Financing' },
-  { id: 'income', label: 'Income & Expenses' },
+  { id: 'income', label: 'Income & Operating Expenses' },
   { id: 'units', label: 'Unit Mix' },
   { id: 'commercial', label: 'Commercial' },
 ]
@@ -251,7 +253,9 @@ const PER_PAGE = 20
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CMHCDatabasePage({ onBack }) {
+export default function CMHCDatabasePage() {
+  const navigate = useNavigate()
+  const { slug } = useParams()
   const fileInputRef = useRef(null)
   const qaRef = useRef(null)
   const [loans, setLoans] = useState([])
@@ -259,6 +263,17 @@ export default function CMHCDatabasePage({ onBack }) {
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState(null)
   const [selectedLoan, setSelectedLoan] = useState(null)
+
+  // Resolve loan from URL slug (address-based) once loans are loaded
+  useEffect(() => {
+    if (slug && !selectedLoan && loans.length > 0) {
+      const match = loans.find((l) =>
+        matchesSlug([l.address, l.city].filter(Boolean).join(' '), slug)
+      )
+      if (match) setSelectedLoan(match)
+    }
+    if (!slug) setSelectedLoan(null)
+  }, [slug, loans])
 
   // Filters
   const [search, setSearch] = useState('')
@@ -423,7 +438,7 @@ export default function CMHCDatabasePage({ onBack }) {
 
   // ── Route to detail page ──
   if (selectedLoan) {
-    return <LoanDetailPage loan={selectedLoan} onBack={() => setSelectedLoan(null)} />
+    return <LoanDetailPage loan={selectedLoan} />
   }
 
   // ── Main render ──
@@ -431,18 +446,18 @@ export default function CMHCDatabasePage({ onBack }) {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-border sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-8 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={onBack} className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm">
+            <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[#777777] hover:text-primary transition-colors text-sm">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Back
             </button>
-            <div className="h-4 w-px bg-border" />
+            <div className="h-6 w-px bg-border" />
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Deal Processor</p>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
             <div className="h-6 w-px bg-border" />
             <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
@@ -480,7 +495,7 @@ export default function CMHCDatabasePage({ onBack }) {
 
         {/* Page title */}
         <div>
-          <h2 className="text-2xl font-bold text-primary tracking-tight">Approved CMHC Loan Database</h2>
+          <h2 className="text-2xl font-bold text-primary tracking-tight">CMHC Loan Database</h2>
           <p className="text-[#777777] text-sm mt-1">{loading ? 'Loading…' : `${loans.length} loans total`}</p>
         </div>
 
@@ -557,7 +572,7 @@ export default function CMHCDatabasePage({ onBack }) {
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
-              Ask AI about database
+              Natural Language Query
             </button>
 
             {/* Clear */}
@@ -628,7 +643,7 @@ export default function CMHCDatabasePage({ onBack }) {
                       {pageRows.map(loan => (
                         <tr
                           key={loan.id}
-                          onClick={() => setSelectedLoan(loan)}
+                          onClick={() => { setSelectedLoan(loan); navigate(`/cmhc-database/${slugify([loan.address, loan.city].filter(Boolean).join(' '))}`) }}
                           className="hover:bg-surface cursor-pointer transition-colors group"
                         >
                           <td className="px-4 py-3 font-medium text-primary group-hover:text-accent transition-colors max-w-[180px] truncate">
@@ -687,9 +702,9 @@ export default function CMHCDatabasePage({ onBack }) {
                 </svg>
               </div>
               <div>
-                <h3 className="text-sm font-bold text-primary">Ask the Database</h3>
+                <h3 className="text-sm font-bold text-primary">Natural Language Query</h3>
                 <p className="text-xs text-[#999999]">
-                  Queries the full loan database · Powered by Claude Sonnet
+                  Query the full loan database using plain English
                 </p>
               </div>
             </div>

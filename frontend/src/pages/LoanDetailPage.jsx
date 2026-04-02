@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { formatCurrency, formatPercent, formatNumber } from '../utils/formatters.js'
 
 function fmt(v, type = 'text') {
@@ -54,7 +55,9 @@ function ltvBadge(v) {
   return 'bg-red-100 text-red-800'
 }
 
-export default function LoanDetailPage({ loan, onBack }) {
+export default function LoanDetailPage({ loan }) {
+  const navigate = useNavigate()
+  const onBack = () => navigate('/cmhc-database')
   const hasCommercial = loan.commercial_area || loan.commercial_value || loan.commercial_egi
 
   const activeUnitTypes = UNIT_TYPES.filter(u =>
@@ -74,12 +77,12 @@ export default function LoanDetailPage({ loan, onBack }) {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Database
+              Back
             </button>
-            <div className="h-4 w-px bg-border" />
+            <div className="h-6 w-px bg-border" />
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
-              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Deal Processor</p>
+              <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
             <div className="h-6 w-px bg-border" />
             <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
@@ -118,7 +121,7 @@ export default function LoanDetailPage({ loan, onBack }) {
         </div>
 
         {/* Property Info */}
-        <Section title="Property Info">
+        <Section title="Property Information">
           <Field label="Loan #" value={loan.loan_number} />
           <Field label="FN Loan #" value={loan.fn_loan_number} />
           <Field label="Region" value={loan.region} />
@@ -147,7 +150,7 @@ export default function LoanDetailPage({ loan, onBack }) {
         </Section>
 
         {/* Income & Expenses */}
-        <Section title="Income & Expenses">
+        <Section title="Income & Operating Expenses">
           <Field label="NOI" value={loan.noi} type="currency" />
           <Field label="NOI / Debt" value={loan.noi_per_debt !== null ? `${(loan.noi_per_debt * 100).toFixed(2)}%` : null} />
           <Field label="EGI" value={loan.egi} type="currency" />

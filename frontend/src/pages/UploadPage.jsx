@@ -6,12 +6,12 @@ import StepIndicator from '../components/StepIndicator.jsx'
 import { useAnalysis } from '../context/AnalysisContext.jsx'
 
 const STAGES = [
-  { label: 'Reading uploaded documents',          ms: 2000  },
-  { label: 'Parsing rent roll & unit data',       ms: 6000  },
-  { label: 'Extracting operating expenses',       ms: 8000  },
-  { label: 'Locating additional income sources',  ms: 7000  },
-  { label: 'Running underwriting analysis',       ms: 10000 },
-  { label: 'Finalising NOI & generating summary', ms: null  },
+  { label: 'Analyzing uploaded documents',              ms: 2000  },
+  { label: 'Parsing rent roll and tenant schedule',     ms: 6000  },
+  { label: 'Extracting operating expense data',         ms: 8000  },
+  { label: 'Identifying income and recoverable items',  ms: 7000  },
+  { label: 'Running underwriting analysis',             ms: 10000 },
+  { label: 'Finalizing extraction and generating summary', ms: null  },
 ]
 
 export default function UploadPage() {
@@ -49,7 +49,7 @@ export default function UploadPage() {
               <p className="text-gray-500 text-sm mt-1">
                 {isCompleting
                   ? 'All data extracted — loading your review…'
-                  : 'Claude is reading your documents and extracting financial data…'}
+                  : 'Analyzing your documents and extracting financial data…'}
               </p>
             </div>
             <div className="flex flex-col gap-3 w-full max-w-sm mx-auto text-left">
@@ -103,8 +103,8 @@ export default function UploadPage() {
               <div>Rent rolls, operating statements, tax documents</div>
             </div>
             <div className="p-4 bg-surface rounded-lg border border-border">
-              <div className="text-primary font-semibold text-base mb-1">AI Extraction</div>
-              <div>Claude reads and structures all financial data</div>
+              <div className="text-primary font-semibold text-base mb-1">Automated Extraction</div>
+              <div>Financial data is parsed and structured automatically</div>
             </div>
             <div className="p-4 bg-surface rounded-lg border border-border">
               <div className="text-primary font-semibold text-base mb-1">Review & Correct</div>

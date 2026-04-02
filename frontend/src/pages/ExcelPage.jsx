@@ -316,7 +316,7 @@ export default function ExcelPage() {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="secondary" onClick={goToReview}>
-            ← Back to Review
+            Back to Review
           </Button>
         </div>
       </div>
@@ -326,7 +326,7 @@ export default function ExcelPage() {
           <Card className="p-5">
             <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">How It Works</h3>
             <ol className="space-y-2 text-sm text-gray-600">
-              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Fill in the Financing Parameters and KS Database Inputs below.</li>
+              <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">1.</span> Fill in the Financing Parameters and KingSett Database Inputs below.</li>
               <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">2.</span> Click <strong>Populate Template</strong> to generate your Economics spreadsheet.</li>
               <li className="flex gap-3"><span className="text-accent font-bold flex-shrink-0">3.</span> Click <strong>Generate Suggestions</strong> to get AI-written content for your PowerPoint slides.</li>
             </ol>
@@ -369,7 +369,7 @@ export default function ExcelPage() {
           {/* KS Database Inputs */}
           <Card className="p-6 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">KS Database Inputs</h3>
+              <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">KingSett Database Inputs</h3>
               <p className="text-xs text-gray-400 mt-0.5">Select values for fields that require manual input in the Economics sheet (F200–F220).</p>
             </div>
             <div className="grid grid-cols-2 gap-4">

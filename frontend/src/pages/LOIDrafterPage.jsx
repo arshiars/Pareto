@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
+import Layout from '../components/Layout.jsx'
 import { extractLoiFields, generateLoi } from '../services/loiApi.js'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -396,7 +397,7 @@ function ReviewStep({ fields, onFieldChange, rowToggles, onToggle, borrowerEntit
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function LOIDrafterPage({ onBack }) {
+export default function LOIDrafterPage() {
   const [step, setStep] = useState(1)
   const [fields, setFields] = useState(emptyFields())
   const [rowToggles, setRowToggles] = useState(initialToggles())
@@ -407,7 +408,6 @@ export default function LOIDrafterPage({ onBack }) {
   const [draftSaved, setDraftSaved] = useState(false)
   const drafts = listDrafts()
 
-  // Auto-fill security amount at 1.25x loan
   useEffect(() => {
     if (fields.loanAmount) {
       const sec = calcSecurityAmount(fields.loanAmount)
@@ -453,8 +453,6 @@ export default function LOIDrafterPage({ onBack }) {
       const d = JSON.parse(raw)
       if (d.fields) setFields(d.fields)
       if (d.rowToggles) setRowToggles(d.rowToggles)
-
-
       if (d.borrowerEntities) setBorrowerEntities(d.borrowerEntities)
       if (d.guarantorEntities) setGuarantorEntities(d.guarantorEntities)
       setStep(2)
@@ -465,7 +463,6 @@ export default function LOIDrafterPage({ onBack }) {
     setGenerating(true); setGenerateError('')
     try {
       const disabledRows = Object.entries(rowToggles).filter(([, v]) => !v).map(([k]) => k)
-      // Format acceptance deadline for document
       const docFields = {
         ...fields,
         acceptanceDeadline: formatDeadlineForDoc(fields.acceptanceDeadline),
@@ -498,73 +495,56 @@ export default function LOIDrafterPage({ onBack }) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="bg-white border-b border-border">
-        <div className="max-w-5xl mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={onBack} className="text-[#777777] hover:text-primary transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
-            </button>
-            <div className="h-5 w-px bg-border" />
-            <div>
-              <h1 className="text-primary text-sm font-bold tracking-tight">LOI Drafter</h1>
-              <p className="text-[#777777] text-xs mt-0.5">Letter of Intent Generator</p>
-            </div>
-            {draftSaved && <span className="text-xs text-green-600 font-medium">Draft saved ✓</span>}
+    <Layout subtitle="LOI Drafter" backTo="/">
+      <div className="flex items-center justify-between mb-8">
+        <StepIndicator step={step} />
+        {draftSaved && <span className="text-xs text-green-600 font-medium">Draft saved</span>}
+      </div>
+
+      {step === 1 && (
+        <div>
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-primary tracking-tight">Upload CIM</h2>
+            <p className="text-[#777777] text-sm mt-1">Upload a broker CIM to auto-extract deal information, or skip to fill manually.</p>
           </div>
-          <div className="flex items-center gap-6">
-            <StepIndicator step={step} />
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-10 w-auto" />
+          <UploadStep onExtracted={handleExtracted} onSkip={() => setStep(2)} drafts={drafts} onLoadDraft={handleLoadDraft} />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div>
+          <div className="mb-8 flex items-start justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-primary tracking-tight">Review Fields</h2>
+              <p className="text-[#777777] text-sm mt-1">Toggle sections, fill fields, then generate.</p>
+            </div>
+            <button onClick={() => setStep(1)} className="text-xs text-accent font-semibold hover:underline mt-1">Re-upload CIM</button>
+          </div>
+          <ReviewStep
+            fields={fields} onFieldChange={handleFieldChange}
+            rowToggles={rowToggles} onToggle={(k, v) => setRowToggles(p => ({ ...p, [k]: v }))}
+            borrowerEntities={borrowerEntities} onBorrowerChange={setBorrowerEntities}
+            guarantorEntities={guarantorEntities} onGuarantorChange={setGuarantorEntities}
+            onGenerate={handleGenerate} generating={generating} error={generateError}
+            onSaveDraft={handleSaveDraft}
+          />
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-5">
+            <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <h2 className="text-2xl font-bold text-primary mb-2">LOI Generated</h2>
+          <p className="text-[#777777] text-sm mb-8">Your Letter of Intent has been downloaded.</p>
+          <div className="flex gap-3">
+            <button onClick={() => { setStep(2); setGenerateError('') }} className="px-5 py-2.5 border border-border text-[#555555] text-sm font-medium rounded-sm hover:border-primary hover:text-primary transition-colors">Edit Fields</button>
+            <button onClick={handleGenerate} disabled={generating} className="px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-sm hover:bg-primary/90 disabled:opacity-40 transition-colors">{generating ? 'Downloading...' : 'Download Again'}</button>
+            <button onClick={handleReset} className="px-5 py-2.5 border border-border text-[#555555] text-sm font-medium rounded-sm hover:border-primary hover:text-primary transition-colors">New LOI</button>
           </div>
         </div>
-      </header>
-
-      <main className="flex-1 max-w-5xl mx-auto w-full px-8 py-10">
-        {step === 1 && (
-          <div>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-primary tracking-tight">Upload CIM</h2>
-              <p className="text-[#777777] text-sm mt-1">Upload a broker CIM to auto-extract deal information, or skip to fill manually.</p>
-            </div>
-            <UploadStep onExtracted={handleExtracted} onSkip={() => setStep(2)} drafts={drafts} onLoadDraft={handleLoadDraft} />
-          </div>
-        )}
-
-        {step === 2 && (
-          <div>
-            <div className="mb-8 flex items-start justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-primary tracking-tight">Review Fields</h2>
-                <p className="text-[#777777] text-sm mt-1">Toggle sections, fill fields, then generate.</p>
-              </div>
-              <button onClick={() => setStep(1)} className="text-xs text-accent font-semibold hover:underline mt-1">← Re-upload CIM</button>
-            </div>
-            <ReviewStep
-              fields={fields} onFieldChange={handleFieldChange}
-              rowToggles={rowToggles} onToggle={(k, v) => setRowToggles(p => ({ ...p, [k]: v }))}
-              borrowerEntities={borrowerEntities} onBorrowerChange={setBorrowerEntities}
-              guarantorEntities={guarantorEntities} onGuarantorChange={setGuarantorEntities}
-              onGenerate={handleGenerate} generating={generating} error={generateError}
-              onSaveDraft={handleSaveDraft}
-            />
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="flex flex-col items-center justify-center py-24">
-            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-5">
-              <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
-            </div>
-            <h2 className="text-2xl font-bold text-primary mb-2">LOI Generated</h2>
-            <p className="text-[#777777] text-sm mb-8">Your Letter of Intent has been downloaded.</p>
-            <div className="flex gap-3">
-              <button onClick={() => { setStep(2); setGenerateError('') }} className="px-5 py-2.5 border border-border text-[#555555] text-sm font-medium rounded-sm hover:border-primary hover:text-primary transition-colors">Edit Fields</button>
-              <button onClick={handleGenerate} disabled={generating} className="px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-sm hover:bg-primary/90 disabled:opacity-40 transition-colors">{generating ? 'Downloading...' : 'Download Again'}</button>
-              <button onClick={handleReset} className="px-5 py-2.5 border border-border text-[#555555] text-sm font-medium rounded-sm hover:border-primary hover:text-primary transition-colors">New LOI</button>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
+      )}
+    </Layout>
   )
 }

@@ -224,8 +224,8 @@ export default function ReviewPage() {
 
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h2 className="text-2xl font-bold text-primary">Review & Summary</h2>
-          <p className="text-gray-500 mt-1">Live NOI calculations. Hover any row to edit values inline.</p>
+          <h2 className="text-2xl font-bold text-primary">Review Financial Data</h2>
+          <p className="text-gray-500 mt-1">NOI calculations update in real time. Hover any row to edit values inline.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={reset}>Start Over</Button>
@@ -240,7 +240,7 @@ export default function ReviewPage() {
 
       {/* Calculation Defaults */}
       <div className="bg-surface border border-border rounded-xl p-4 mb-4 print:hidden">
-        <h3 className="text-xs font-semibold text-primary uppercase tracking-wide mb-3">Calculation Defaults</h3>
+        <h3 className="text-xs font-semibold text-primary uppercase tracking-wide mb-3">Underwriting Assumptions</h3>
         <div className="grid grid-cols-5 gap-4">
           <Input
             label="Vacancy Rate"
@@ -292,7 +292,7 @@ export default function ReviewPage() {
             <div className="bg-primary px-6 py-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <h1 className="text-white text-lg font-bold">CMHC Underwriting — CMHC Deal Processor</h1>
+                  <h1 className="text-white text-lg font-bold">Fundus — CMHC Underwriting</h1>
                   <p className="text-white/60 text-sm mt-0.5">{propertyInfo?.address || 'Property Address Not Specified'}</p>
                 </div>
                 <div className="text-right">

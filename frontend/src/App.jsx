@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { AnalysisProvider, useAnalysis } from './context/AnalysisContext.jsx'
 import Layout from './components/Layout.jsx'
 import Gateway from './components/Gateway.jsx'
@@ -12,13 +13,14 @@ import CMHCDatabasePage from './pages/CMHCDatabasePage.jsx'
 import ComparableAnalysisPage from './pages/ComparableAnalysisPage.jsx'
 import RentComparablesPage from './pages/RentComparablesPage.jsx'
 import LOIDrafterPage from './pages/LOIDrafterPage.jsx'
+import TripleCApp from './pages/TripleCApp.jsx'
 import { checkAuth } from './services/api.js'
 
 function AppContent() {
   const { state } = useAnalysis()
 
   return (
-    <Layout>
+    <Layout backTo="/">
       {(state.step === 'upload' || state.step === 'processing') && <UploadPage />}
       {state.step === 'review' && <ReviewPage />}
       {state.step === 'excel' && <ExcelPage />}
@@ -29,7 +31,6 @@ function AppContent() {
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
   const [checking, setChecking] = useState(true)
-  const [mode, setMode] = useState(null) // null | 'cmhc' | 'conventional'
 
   useEffect(() => {
     checkAuth()
@@ -50,37 +51,19 @@ export default function App() {
     return <Gateway onAuthenticated={() => setAuthenticated(true)} />
   }
 
-  if (mode === null) {
-    return <SelectionPage onSelect={setMode} />
-  }
-
-  if (mode === 'conventional') {
-    return <ConventionalPage onSelect={(sub) => setMode(`conventional/${sub}`)} onBack={() => setMode(null)} />
-  }
-
-  if (mode === 'conventional/ipp') {
-    return <IPPPage onBack={() => setMode('conventional')} />
-  }
-
-  if (mode === 'cmhc-database') {
-    return <CMHCDatabasePage onBack={() => setMode(null)} />
-  }
-
-  if (mode === 'loi-drafter') {
-    return <LOIDrafterPage onBack={() => setMode(null)} />
-  }
-
-  if (mode === 'comparable-analysis') {
-    return <ComparableAnalysisPage onBack={() => setMode(null)} onSelect={(sub) => setMode(`comparable-analysis/${sub}`)} />
-  }
-
-  if (mode === 'comparable-analysis/rent-comparables') {
-    return <RentComparablesPage onBack={() => setMode('comparable-analysis')} />
-  }
-
   return (
-    <AnalysisProvider>
-      <AppContent />
-    </AnalysisProvider>
+    <Routes>
+      <Route path="/" element={<SelectionPage />} />
+      <Route path="/cmhc" element={<AnalysisProvider><AppContent /></AnalysisProvider>} />
+      <Route path="/conventional" element={<ConventionalPage />} />
+      <Route path="/conventional/ipp" element={<IPPPage />} />
+      <Route path="/cmhc-database" element={<CMHCDatabasePage />} />
+      <Route path="/cmhc-database/:slug" element={<CMHCDatabasePage />} />
+      <Route path="/loi-drafter" element={<LOIDrafterPage />} />
+      <Route path="/comparable-analysis" element={<ComparableAnalysisPage />} />
+      <Route path="/comparable-analysis/rent-comparables/*" element={<RentComparablesPage />} />
+      <Route path="/triple-c/*" element={<TripleCApp />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }

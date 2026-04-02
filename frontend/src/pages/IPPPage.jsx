@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { IPPProvider, useIPP } from '../context/IPPContext.jsx'
 import Layout from '../components/Layout.jsx'
 import Step1Upload from './ipp/Step1Upload.jsx'
@@ -37,30 +38,17 @@ function StepBar({ current }) {
   )
 }
 
-function IPPContent({ onBack }) {
-  const { state, reset } = useIPP()
+function IPPContent() {
+  const navigate = useNavigate()
+  const { state } = useIPP()
   const { step } = state
 
   function handleBack() {
-    reset()
-    onBack()
+    navigate('/conventional')
   }
 
   return (
-    <Layout subtitle="Conventional — IPP">
-      <div className="mb-5 flex items-center gap-2">
-        <button
-          onClick={handleBack}
-          className="inline-flex items-center gap-1.5 text-sm text-[#999999] hover:text-primary transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Conventional
-        </button>
-        <span className="text-border text-lg leading-none">›</span>
-        <span className="text-xs font-semibold text-[#aaaaaa] uppercase tracking-widest">Income Producing Property</span>
-      </div>
+    <Layout subtitle="Conventional — IPP" backTo="/conventional">
 
       <StepBar current={step} />
 
@@ -70,10 +58,10 @@ function IPPContent({ onBack }) {
   )
 }
 
-export default function IPPPage({ onBack }) {
+export default function IPPPage() {
   return (
     <IPPProvider>
-      <IPPContent onBack={onBack} />
+      <IPPContent />
     </IPPProvider>
   )
 }
