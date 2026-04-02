@@ -94,6 +94,29 @@ export default function SelectionPage() {
           </button>
 
           <button
+            onClick={() => navigate('/loi-drafter')}
+            className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 rounded-sm bg-surface flex items-center justify-center group-hover:bg-primary/10 transition-colors flex-shrink-0">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <span className="text-primary font-semibold text-sm">LOI Drafter</span>
+                <p className="text-[#777777] text-xs mt-0.5">Draft Letters of Intent for property acquisitions</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-accent text-xs font-semibold uppercase tracking-wider">
+              Open
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+
+          <button
             onClick={() => navigate('/triple-c')}
             className="group w-full flex items-center justify-between px-6 py-4 bg-white border border-border rounded-sm hover:border-primary hover:shadow-sm transition-all duration-150"
           >
@@ -138,6 +161,7 @@ export default function SelectionPage() {
               </svg>
             </div>
           </button>
+
         </div>
       </main>
     </div>

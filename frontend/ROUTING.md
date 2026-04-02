@@ -23,6 +23,7 @@
 | `/conventional/ipp` | `IPPPage` | IPP analysis tool |
 | `/cmhc-database` | `CMHCDatabasePage` | Loan database list |
 | `/cmhc-database/:slug` | `CMHCDatabasePage` | Loan detail — slug from `slugify(address + city)` |
+| `/loi-drafter` | `LOIDrafterPage` | LOI generation wizard (upload CIM → review fields → generate DOCX) |
 | `/comparable-analysis` | `ComparableAnalysisPage` | Comparable analysis hub |
 | `/comparable-analysis/rent-comparables/*` | `RentComparablesPage` | Sub-routes handled internally |
 | `/triple-c/*` | `TripleCApp` | Sub-routes handled internally |
