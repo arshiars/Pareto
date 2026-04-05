@@ -108,6 +108,44 @@ export async function fetchPptSuggestions(extractedData) {
   return res.json()
 }
 
+export function streamDevilsAdvocate(noiData, propertyInfo, defaults, onChunk, onDone, onError) {
+  fetch(`${BASE_URL}/analysis/devils-advocate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ noiData, propertyInfo, defaults }),
+  }).then((res) => {
+    if (!res.ok) {
+      res.text().then((t) => { try { onError(JSON.parse(t).error) } catch { onError(`HTTP ${res.status}`) } })
+      return
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) { onDone(); return }
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() // keep incomplete line in buffer
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.type === 'text') onChunk(data.text)
+              else if (data.type === 'done') onDone()
+              else if (data.type === 'error') onError(data.message)
+            } catch {}
+          }
+        }
+        read()
+      }).catch((err) => onError(err.message))
+    }
+    read()
+  }).catch((err) => onError(err.message))
+}
+
 export async function researchField(fieldName, propertyContext) {
   const res = await fetch(`${BASE_URL}/analysis/research`, {
     method: 'POST',

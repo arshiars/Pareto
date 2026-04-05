@@ -5,7 +5,7 @@ import StepIndicator from '../components/StepIndicator.jsx'
 import { useAnalysis } from '../context/AnalysisContext.jsx'
 import { calculateNOI } from '../utils/calculations.js'
 import { formatCurrency, formatPercent } from '../utils/formatters.js'
-import { extractFieldFromDocument } from '../services/api.js'
+import { extractFieldFromDocument, streamDevilsAdvocate } from '../services/api.js'
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 function PencilIcon() {
@@ -197,6 +197,11 @@ export default function ReviewPage() {
 
   const fileInputRef = useRef(null)
   const [uploadingField, setUploadingField] = useState(null)
+  const [daLoading, setDaLoading] = useState(false)
+  const [daText, setDaText] = useState('') // raw streamed text
+  const [daDone, setDaDone] = useState(false)
+  const [daError, setDaError] = useState(null)
+  const daRef = useRef(null)
 
   if (!extractedData) return null
 
@@ -226,6 +231,39 @@ export default function ReviewPage() {
     }
   }
 
+  function runDevilsAdvocate() {
+    setDaLoading(true)
+    setDaError(null)
+    setDaText('')
+    setDaDone(false)
+    setTimeout(() => daRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200)
+
+    streamDevilsAdvocate(
+      noi,
+      propertyInfo,
+      defaults,
+      (chunk) => setDaText((prev) => prev + chunk),
+      () => { setDaDone(true); setDaLoading(false) },
+      (err) => { setDaError(err); setDaLoading(false) },
+    )
+  }
+
+  // Parse streamed text into structured sections
+  function parseDaText(text) {
+    const overall = text.match(/OVERALL:\s*([\s\S]*?)(?=\nCHALLENGE:|$)/)?.[1]?.trim() || null
+    const challengeBlocks = [...text.matchAll(/CHALLENGE:\s*(.*)\nCURRENT:\s*(.*)\nRISK:\s*([\s\S]*?)(?=SUGGESTED:)/g)]
+    const challenges = challengeBlocks.map((m) => {
+      const suggestedMatch = text.slice(m.index + m[0].length).match(/SUGGESTED:\s*(.*?)(?=\nCHALLENGE:|\n\n|$)/)
+      return {
+        field: m[1].trim(),
+        current: m[2].trim(),
+        challenge: m[3].trim(),
+        suggested: suggestedMatch?.[1]?.trim() || null,
+      }
+    })
+    return { overall, challenges }
+  }
+
   function saveOverride(key) { return (val) => setOverride(key, val) }
 
   return (
@@ -239,11 +277,28 @@ export default function ReviewPage() {
           <h2 className="text-2xl font-bold text-primary">Review Financial Data</h2>
           <p className="text-gray-500 mt-1">NOI calculations update in real time. Hover any row to edit values inline.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={reset}>Start Over</Button>
+          <Button
+            variant="secondary"
+            onClick={runDevilsAdvocate}
+            disabled={daLoading || noi.noi === 0}
+          >
+            {daLoading ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Analyzing…
+              </>
+            ) : (
+              'Devil\'s Advocate'
+            )}
+          </Button>
           <Button variant="accent" onClick={goToExcel}>
             Populate Excel Template
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
           </Button>
@@ -451,6 +506,91 @@ export default function ReviewPage() {
             </div>
           </div>
 
+        {/* ── Devil's Advocate ──────────────────────────────────────────── */}
+        <div ref={daRef}>
+          {daError && (
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 print:hidden">
+              <strong>Devil's Advocate failed:</strong> {daError}
+            </div>
+          )}
+
+          {(daText || daLoading) && (() => {
+            const { overall, challenges } = parseDaText(daText)
+            return (
+            <div className="mt-6 print:hidden" style={{ animation: 'daSlideIn .3s ease-out' }}>
+              <style>{`@keyframes daSlideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
+              <div className="bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Header */}
+                <div className="px-5 py-3 bg-red-50/60 border-b border-red-200 flex items-center gap-3">
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 flex-shrink-0">
+                    <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </span>
+                  <span className="text-sm font-semibold text-red-900">Devil's Advocate</span>
+                  {daLoading && (
+                    <span className="flex items-center gap-1.5 text-xs text-red-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                      Analyzing...
+                    </span>
+                  )}
+                  {daDone && challenges.length > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">{challenges.length} issue{challenges.length !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
+
+                {/* Overall assessment */}
+                {overall && (
+                  <div className="px-5 py-3 bg-red-50/30 border-b border-red-100">
+                    <p className="text-sm text-red-900 leading-relaxed">{overall}</p>
+                  </div>
+                )}
+
+                {/* Challenges stream in one by one */}
+                {challenges.length > 0 && (
+                  <div className="divide-y divide-red-100">
+                    {challenges.map((c, i) => (
+                      <div key={i} className="px-5 py-3.5 flex gap-4" style={{ animation: `daSlideIn .3s ease-out` }}>
+                        <div className="flex-shrink-0 mt-0.5">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 text-[10px] font-bold">!</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold text-gray-900">{c.field}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide bg-red-100 text-red-700">High Risk</span>
+                            {c.current && (
+                              <span className="text-[11px] text-gray-400">Currently: <span className="font-medium text-gray-600">{c.current}</span></span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 leading-relaxed">{c.challenge}</p>
+                          {c.suggested && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Suggested:</span>
+                              <span className="text-sm font-semibold text-primary bg-primary/5 px-2 py-0.5 rounded">{c.suggested}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Typing indicator while streaming */}
+                {daLoading && (
+                  <div className="px-5 py-3 border-t border-red-100">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            )
+          })()}
+        </div>
+
         {/* Per-unit metrics */}
         {(() => {
           const units = propertyInfo?.totalUnits
@@ -478,7 +618,6 @@ export default function ReviewPage() {
 
 
 
-        {/* AI Analysis */}
         <AnalysisPanel analysis={analysis} />
       </div>
     </div>

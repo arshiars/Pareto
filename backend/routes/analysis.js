@@ -126,4 +126,72 @@ router.post('/database-query', async (req, res) => {
   }
 })
 
+// POST /analysis/devils-advocate (streaming via SSE)
+router.post('/devils-advocate', async (req, res) => {
+  const { noiData, propertyInfo, defaults } = req.body
+  if (!noiData) return res.status(400).json({ error: 'noiData is required' })
+
+  // Set up SSE
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    const prompt = `You are a skeptical senior underwriter at a Canadian institutional lender. Poke holes in this deal. Be specific and quantitative.
+
+## Property
+- Address: ${propertyInfo?.address || 'Not specified'}
+- Total Units: ${propertyInfo?.totalUnits || 'Unknown'}
+- Year Built: ${propertyInfo?.yearBuilt || 'Unknown'}
+
+## Assumptions: Vacancy ${((defaults?.vacancyRate ?? 0) * 100).toFixed(2)}%, Mgmt Fee ${((defaults?.managementFeeRate ?? 0) * 100).toFixed(2)}%, Cap Rate ${defaults?.capRate ? ((defaults.capRate) * 100).toFixed(2) + '%' : 'Not set'}
+
+## NOI: GPR $${noiData.gpr?.toLocaleString() ?? 0} | Add'l Income $${noiData.additionalIncome?.toLocaleString() ?? 0} | Vacancy ($${noiData.vacancyLoss?.toLocaleString() ?? 0}) | EGI $${noiData.egi?.toLocaleString() ?? 0} | Prop Tax $${noiData.propertyTaxes?.toLocaleString() ?? 0} | Insurance $${noiData.insurance?.toLocaleString() ?? 0} | Utilities $${noiData.utilities?.toLocaleString() ?? 0} | R&M $${noiData.repairsAndMaintenance?.toLocaleString() ?? 0} | Payroll $${noiData.payrollAndAdmin?.toLocaleString() ?? 0} | Mgmt $${noiData.managementFee?.toLocaleString() ?? 0} | Total OpEx $${noiData.totalOpEx?.toLocaleString() ?? 0} | **NOI $${noiData.noi?.toLocaleString() ?? 0}**
+
+Write your response in this EXACT format — one section at a time. Start with OVERALL, then each CHALLENGE. Use this exact structure with these exact markers:
+
+OVERALL: 2-3 sentence assessment of whether the underwriting is aggressive, conservative, or reasonable.
+
+CHALLENGE: Field Name
+CURRENT: the current value
+RISK: 2-3 sentence explanation of why this is questionable. Be specific.
+SUGGESTED: your recommended alternative value or range
+
+CHALLENGE: Next Field Name
+CURRENT: ...
+RISK: ...
+SUGGESTED: ...
+
+Rules:
+- Only raise HIGH severity issues that materially impact NOI or deal value
+- 3-6 challenges maximum
+- Be specific and quantitative — cite CMHC benchmarks, typical Canadian multi-res ranges
+- Do NOT use JSON. Use the exact plain text format above.`
+
+    const stream = claude.messages.stream({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        const text = event.delta.text
+        res.write(`data: ${JSON.stringify({ type: 'text', text })}\n\n`)
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
+    res.end()
+  } catch (err) {
+    console.error('[Devils Advocate] Stream error:', err.message)
+    res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`)
+    res.end()
+  }
+})
+
 export default router
