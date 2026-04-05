@@ -202,11 +202,11 @@ function UploadStep({ onExtracted, onSkip, drafts, onLoadDraft }) {
   return (
     <div className="max-w-xl mx-auto">
       {drafts.length > 0 && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-sm p-4">
-          <p className="text-xs font-semibold text-blue-800 mb-2">Resume a saved draft</p>
+        <div className="mb-6 bg-surface border border-border rounded-sm p-4">
+          <p className="text-xs font-semibold text-[#555555] mb-2">Resume a saved draft</p>
           <div className="flex flex-col gap-1.5">
             {drafts.slice(0, 3).map(d => (
-              <button key={d.key} onClick={() => onLoadDraft(d.key)} className="text-left px-3 py-2 bg-white border border-blue-200 rounded-sm hover:border-blue-400 transition-colors">
+              <button key={d.key} onClick={() => onLoadDraft(d.key)} className="text-left px-3 py-2 bg-white border border-border rounded-sm hover:border-primary transition-colors">
                 <p className="text-xs font-medium text-primary truncate">{d.address}</p>
                 <p className="text-[10px] text-[#777777]">{new Date(d.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
               </button>
@@ -228,7 +228,7 @@ function UploadStep({ onExtracted, onSkip, drafts, onLoadDraft }) {
           {file ? (<><p className="text-primary font-semibold text-sm">{file.name}</p><p className="text-[#777777] text-xs">{(file.size/1024/1024).toFixed(1)} MB — click to change</p></>) : (<><p className="text-primary font-semibold text-sm">Drop your CIM PDF here</p><p className="text-[#777777] text-xs">or click to browse</p></>)}
         </div>
       </div>
-      {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-xs text-error">{error}</p>}
       <div className="mt-6 flex flex-col gap-3">
         <button onClick={handleExtract} disabled={!file || loading} className="w-full py-2.5 bg-primary text-white text-sm font-semibold rounded-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
           {loading ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Extracting from CIM...</>) : 'Extract & Pre-fill Fields'}
@@ -380,14 +380,14 @@ function ReviewStep({ fields, onFieldChange, rowToggles, onToggle, borrowerEntit
 
       </div>
 
-      {error && <p className="mt-4 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-xs text-error">{error}</p>}
 
       <div className="mt-8 pt-6 border-t border-border flex gap-3">
-        <button onClick={onSaveDraft} className="px-5 py-3 border border-border text-[#555555] text-sm font-medium rounded-sm hover:border-primary hover:text-primary transition-colors flex items-center gap-2">
+        <button onClick={onSaveDraft} className="px-5 py-2.5 border border-border text-[#555555] text-sm font-medium rounded-sm hover:border-primary hover:text-primary transition-colors flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
           Save Draft
         </button>
-        <button onClick={onGenerate} disabled={generating} className="flex-1 py-3 bg-primary text-white text-sm font-semibold rounded-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+        <button onClick={onGenerate} disabled={generating} className="flex-1 py-2.5 bg-primary text-white text-sm font-semibold rounded-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
           {generating ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Generating LOI...</>) : 'Generate LOI Document'}
         </button>
       </div>
@@ -533,8 +533,8 @@ export default function LOIDrafterPage() {
 
       {step === 3 && (
         <div className="flex flex-col items-center justify-center py-24">
-          <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-5">
-            <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+          <div className="w-14 h-14 rounded-sm bg-primary/10 flex items-center justify-center mb-5">
+            <svg className="w-7 h-7 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
           </div>
           <h2 className="text-2xl font-bold text-primary mb-2">LOI Generated</h2>
           <p className="text-[#777777] text-sm mb-8">Your Letter of Intent has been downloaded.</p>

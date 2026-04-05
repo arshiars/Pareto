@@ -24,7 +24,7 @@ function UploadDocIcon() {
 }
 
 // ─── NOI table components ─────────────────────────────────────────────────────
-function EditableRow({ label, rawValue, displayValue, onSave, onUpload, uploading, indent = false, suffix = '' }) {
+function EditableRow({ label, rawValue, displayValue, onSave, onUpload, uploading, indent = false, suffix = '', source = null }) {
   const [editing, setEditing] = useState(false)
   const [input, setInput] = useState('')
 
@@ -67,8 +67,20 @@ function EditableRow({ label, rawValue, displayValue, onSave, onUpload, uploadin
   return (
     <tr className="border-b border-border group/row hover:bg-gray-50 transition-colors">
       <td className={`py-1.5 ${indent ? 'pl-8' : 'pl-4'} pr-4 text-sm text-gray-700`}>
-        {label}
-        {uploading && <span className="ml-2 text-xs text-accent animate-pulse">Extracting from document...</span>}
+        <div className="flex flex-col gap-0.5">
+          <span>
+            {label}
+            {uploading && <span className="ml-2 text-xs text-accent animate-pulse">Extracting from document...</span>}
+          </span>
+          {source && (
+            <span className="opacity-0 group-hover/row:opacity-100 transition-opacity flex items-center gap-1 text-[10px] text-[#555555] font-medium">
+              <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {source}
+            </span>
+          )}
+        </div>
       </td>
       <td className="py-1.5 pr-4 text-right text-sm tabular-nums text-gray-700">
         <span className="inline-flex items-center gap-3">
@@ -246,41 +258,46 @@ export default function ReviewPage() {
             label="Vacancy Rate"
             suffix="%"
             type="number"
-            value={(defaults.vacancyRate * 100).toFixed(2)}
-            onChange={(e) => setDefault('vacancyRate', Number(e.target.value) / 100)}
+            step="0.01"
+            value={parseFloat((defaults.vacancyRate * 100).toFixed(2))}
+            onChange={(e) => setDefault('vacancyRate', parseFloat(e.target.value) / 100 || 0)}
             placeholder="3.00"
           />
           <Input
             label="Management Fee Rate"
             suffix="%"
             type="number"
-            value={(defaults.managementFeeRate * 100).toFixed(2)}
-            onChange={(e) => setDefault('managementFeeRate', Number(e.target.value) / 100)}
+            step="0.01"
+            value={parseFloat((defaults.managementFeeRate * 100).toFixed(2))}
+            onChange={(e) => setDefault('managementFeeRate', parseFloat(e.target.value) / 100 || 0)}
             placeholder="4.25"
           />
           <Input
             label="Other Deductions Rate"
             suffix="%"
             type="number"
-            value={(defaults.otherDeductionsRate * 100).toFixed(2)}
-            onChange={(e) => setDefault('otherDeductionsRate', Number(e.target.value) / 100)}
+            step="0.01"
+            value={parseFloat((defaults.otherDeductionsRate * 100).toFixed(2))}
+            onChange={(e) => setDefault('otherDeductionsRate', parseFloat(e.target.value) / 100 || 0)}
             placeholder="1.00"
           />
           <Input
             label="Replacement Reserve / Appliance"
             prefix="$"
             type="number"
+            step="1"
             value={defaults.replacementReservePerAppliance}
-            onChange={(e) => setDefault('replacementReservePerAppliance', Number(e.target.value))}
+            onChange={(e) => setDefault('replacementReservePerAppliance', parseFloat(e.target.value) || 0)}
             placeholder="180"
           />
           <Input
             label="Cap Rate"
             suffix="%"
             type="number"
-            value={defaults.capRate != null ? (defaults.capRate * 100).toFixed(2) : ''}
-            onChange={(e) => setDefault('capRate', e.target.value ? Number(e.target.value) / 100 : null)}
-            placeholder="Enter cap rate"
+            step="0.01"
+            value={defaults.capRate != null ? parseFloat((defaults.capRate * 100).toFixed(2)) : ''}
+            onChange={(e) => setDefault('capRate', e.target.value ? parseFloat(e.target.value) / 100 : null)}
+            placeholder="e.g. 5.50"
           />
         </div>
       </div>
@@ -319,17 +336,13 @@ export default function ReviewPage() {
                       displayValue={formatCurrency(annual)}
                       suffix="/mo"
                       onSave={saveOverride(`unit.${unit.type}.rent`)}
+                      source={unit.source}
                       indent
                     />
                   )
                 })}
 
                 <StaticRow label="Gross Potential Rent (GPR)" value={formatCurrency(noi.gpr)} bold />
-                <StaticRow
-                  label={`Vacancy Loss (${formatPercent(noi.vacancyRate)})`}
-                  value={`(${formatCurrency(noi.vacancyLoss)})`}
-                  indent
-                />
 
                 {(['parking', 'storage', 'laundry']).map((key) => {
                   const annualVal = noi[key]
@@ -345,6 +358,7 @@ export default function ReviewPage() {
                       onSave={saveOverride(fieldKey)}
                       onUpload={() => triggerUpload(fieldKey)}
                       uploading={uploadingField === fieldKey}
+                      source={additionalIncome?.[key]?.source}
                       indent
                     />
                   )
@@ -358,9 +372,16 @@ export default function ReviewPage() {
                     onSave={saveOverride('additionalIncome.other')}
                     onUpload={() => triggerUpload('additionalIncome.other')}
                     uploading={uploadingField === 'additionalIncome.other'}
+                    source={additionalIncome?.other?.source}
                     indent
                   />
                 )}
+
+                <StaticRow
+                  label={`Vacancy Loss (${formatPercent(noi.vacancyRate)})`}
+                  value={`(${formatCurrency(noi.vacancyLoss)})`}
+                  indent
+                />
 
                 <StaticRow label="Effective Gross Income (EGI)" value={formatCurrency(noi.egi)} bold light />
 
@@ -381,6 +402,7 @@ export default function ReviewPage() {
                     onSave={saveOverride(key)}
                     onUpload={() => triggerUpload(key)}
                     uploading={uploadingField === key}
+                    source={operatingExpenses?.[key]?.source}
                     indent
                   />
                 ))}

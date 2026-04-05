@@ -12,24 +12,28 @@ const STEPS = [
 function StepBar({ current }) {
   const activeIndex = current === 'processing' || current === 'completing' ? 0 : STEPS.findIndex((s) => s.key === current)
   return (
-    <div className="flex items-center gap-0 mb-8">
+    <div className="flex items-center mb-8">
       {STEPS.map((step, i) => {
-        const done    = i < activeIndex
-        const active  = i === activeIndex
+        const done   = i < activeIndex
+        const active = i === activeIndex
         return (
           <div key={step.key} className="flex items-center">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wide transition-colors ${
-              active ? 'bg-primary text-white' : done ? 'text-accent' : 'text-[#bbbbbb]'
-            }`}>
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold border ${
-                active ? 'border-white/50 text-white' : done ? 'border-accent text-accent' : 'border-[#cccccc] text-[#cccccc]'
-              }`}>
-                {done ? '✓' : i + 1}
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors
+                ${done   ? 'bg-primary text-white'
+                : active ? 'bg-accent text-white'
+                :          'bg-surface text-[#777777] border border-border'}`}
+              >
+                {done
+                  ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                  : i + 1}
+              </div>
+              <span className={`text-xs font-medium ${active ? 'text-primary' : 'text-[#777777]'}`}>
+                {step.label}
               </span>
-              {step.label}
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`w-8 h-px mx-1 ${i < activeIndex ? 'bg-accent' : 'bg-border'}`} />
+              <div className="w-8 h-px bg-border mx-3" />
             )}
           </div>
         )

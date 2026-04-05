@@ -1,40 +1,37 @@
 const steps = [
-  { key: 'upload',  label: 'Upload',            num: 1 },
-  { key: 'review',  label: 'Review',  num: 2 },
-  { key: 'excel',   label: 'Excel',             num: 3 },
+  { key: 'upload',  label: 'Upload Files',    num: 1 },
+  { key: 'review',  label: 'Review Output',   num: 2 },
+  { key: 'excel',   label: 'Generate Excel',  num: 3 },
 ]
 
 export default function StepIndicator({ currentStep }) {
-  // 'processing' maps to 'upload' so step 1 stays highlighted during extraction
   const resolvedStep = currentStep === 'processing' ? 'upload' : currentStep
   const currentIndex = steps.findIndex((s) => s.key === resolvedStep)
 
   return (
-    <div className="flex items-center gap-0 mb-8">
+    <div className="flex items-center mb-8">
       {steps.map((step, i) => {
         const done   = i < currentIndex
         const active = i === currentIndex
 
         return (
           <div key={step.key} className="flex items-center">
-            <div className="flex flex-col items-center">
-              <div
-                className={`w-7 h-7 flex items-center justify-center text-xs font-semibold transition-all duration-200
-                  ${done   ? 'bg-primary text-white'
-                  : active ? 'border-2 border-primary text-primary bg-white'
-                  : 'border border-border text-[#777777] bg-white'}`}
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors
+                ${done   ? 'bg-primary text-white'
+                : active ? 'bg-accent text-white'
+                :          'bg-surface text-[#777777] border border-border'}`}
               >
-                {done ? '✓' : step.num}
+                {done
+                  ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                  : step.num}
               </div>
-              <div className="flex flex-col items-center mt-1.5">
-                <span className={`text-[11px] font-medium tracking-wide uppercase
-                  ${active ? 'text-primary' : done ? 'text-primary/60' : 'text-[#777777]'}`}>
-                  {step.label}
-                </span>
-              </div>
+              <span className={`text-xs font-medium ${active ? 'text-primary' : 'text-[#777777]'}`}>
+                {step.label}
+              </span>
             </div>
             {i < steps.length - 1 && (
-              <div className={`h-px w-14 mx-2 mb-6 transition-all duration-200 ${i < currentIndex ? 'bg-primary/40' : 'bg-border'}`} />
+              <div className="w-8 h-px bg-border mx-3" />
             )}
           </div>
         )

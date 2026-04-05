@@ -77,9 +77,9 @@ export default function TripleCUploadPage({ onBack, onExtracted }) {
 
       <main className="flex-1 flex flex-col items-center justify-center px-8 py-16">
         <div className="w-full max-w-xl">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold text-primary tracking-tight">Upload QS Reports</h2>
-            <p className="text-[#777777] mt-3 text-sm">
+          <div className="mb-10">
+            <h2 className="text-2xl font-bold text-primary tracking-tight">Upload QS Reports</h2>
+            <p className="text-[#777777] mt-1.5 text-sm">
               Drop one or more PDF QS reports. Each will be extracted and reviewed one at a time before saving.
             </p>
           </div>

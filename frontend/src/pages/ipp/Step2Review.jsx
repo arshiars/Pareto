@@ -121,6 +121,7 @@ function Row({ label, extracted, overrideKey, type = 'currency', indent = false,
             <input
               autoFocus
               type="number"
+              step={type === 'pct' ? '0.01' : undefined}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
