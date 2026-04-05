@@ -67,7 +67,16 @@ function calcNOI(data, overrides) {
 
 // ─── Source badge ─────────────────────────────────────────────────────────────
 
-function Src({ source, overridden, isDefault }) {
+function ConfidenceDot({ confidence }) {
+  if (!confidence) return null
+  const color = confidence === 'high' ? 'bg-green-500' : confidence === 'medium' ? 'bg-amber-400' : 'bg-red-400'
+  const label = confidence === 'high' ? 'High confidence' : confidence === 'medium' ? 'Medium confidence — verify' : 'Low confidence — double-check'
+  return (
+    <span className={`inline-block w-1.5 h-1.5 rounded-full ${color} flex-shrink-0`} title={label} />
+  )
+}
+
+function Src({ source, overridden, isDefault, confidence }) {
   if (!source) return <span className="text-[11px] text-[#dddddd]">not found</span>
   if (isDefault) return (
     <span className="text-[11px] px-1.5 py-0.5 rounded-sm font-medium whitespace-nowrap border border-dashed border-[#cccccc] text-[#aaaaaa]">
@@ -75,10 +84,13 @@ function Src({ source, overridden, isDefault }) {
     </span>
   )
   return (
-    <span className={`text-[11px] px-1.5 py-0.5 rounded-sm font-medium whitespace-nowrap ${
-      overridden ? 'bg-accent/15 text-accent' : 'bg-surface text-[#aaaaaa]'
-    }`}>
-      {source}
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`text-[11px] px-1.5 py-0.5 rounded-sm font-medium whitespace-nowrap ${
+        overridden ? 'bg-accent/15 text-accent' : 'bg-surface text-[#aaaaaa]'
+      }`}>
+        {source}
+      </span>
+      {!overridden && <ConfidenceDot confidence={confidence} />}
     </span>
   )
 }
@@ -87,11 +99,13 @@ function Src({ source, overridden, isDefault }) {
 
 function Row({ label, extracted, overrideKey, type = 'currency', indent = false, dimLabel = false, onUpload = null, uploading = false, defaultValue, defaultSource }) {
   const { state: { userOverrides }, setOverride } = useIPP()
-  const overridden = userOverrides[overrideKey] !== undefined
-  const rawValue   = extracted?.value ?? null
-  const isDefault  = !overridden && rawValue == null && defaultValue !== undefined
-  const value      = overridden ? userOverrides[overrideKey] : (rawValue ?? (defaultValue ?? null))
-  const source     = overridden ? 'Manual entry' : (rawValue != null ? extracted?.source : (isDefault ? defaultSource : null))
+  const overridden   = userOverrides[overrideKey] !== undefined
+  const rawValue     = extracted?.value ?? null
+  const isDefault    = !overridden && rawValue == null && defaultValue !== undefined
+  const value        = overridden ? userOverrides[overrideKey] : (rawValue ?? (defaultValue ?? null))
+  const source       = overridden ? 'Manual entry' : (rawValue != null ? extracted?.source : (isDefault ? defaultSource : null))
+  const confidence   = extracted?.confidence ?? null
+  const isLowConf    = !overridden && rawValue != null && confidence === 'low'
 
   const [editing, setEditing] = useState(false)
   const [input,   setInput]   = useState('')
@@ -108,10 +122,11 @@ function Row({ label, extracted, overrideKey, type = 'currency', indent = false,
   const display = type === 'pct' ? PCT(value) : type === 'text' ? value : type === 'number' ? (value != null ? Number(value).toLocaleString('en-CA') : null) : CAD(value)
 
   return (
-    <tr className="group/row border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors">
+    <tr className={`group/row border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors ${isLowConf ? 'bg-red-50/40' : ''}`}>
       <td className={`py-2 pr-3 text-sm ${indent ? 'pl-10' : 'pl-5'} ${dimLabel ? 'text-[#888888]' : 'text-[#333333]'} w-[42%]`}>
         <span className="flex items-center gap-2">
           {label}
+          {isLowConf && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">Verify</span>}
           {uploading && <span className="text-[10px] text-accent animate-pulse">Extracting…</span>}
         </span>
       </td>
@@ -167,7 +182,7 @@ function Row({ label, extracted, overrideKey, type = 'currency', indent = false,
         )}
       </td>
       <td className="py-2 pr-5 text-right w-[28%]">
-        <Src source={source} overridden={overridden} isDefault={isDefault} />
+        <Src source={source} overridden={overridden} isDefault={isDefault} confidence={confidence} />
       </td>
     </tr>
   )
@@ -897,6 +912,9 @@ export default function Step2Review({ onBack }) {
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent/30 inline-block" />Manual override</span>
         <span className="flex items-center gap-1.5"><span className="italic text-[#aaaaaa]">$0</span>&nbsp;<span className="text-[10px] border border-dashed border-[#cccccc] rounded-sm px-1">Default</span>Applied default</span>
         <span className="flex items-center gap-1.5"><span className="text-[#dddddd] font-bold">—</span>Not found</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />High confidence</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Medium</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Low — verify</span>
       </div>
 
       {/* ── Property Details ── */}
@@ -996,6 +1014,151 @@ export default function Step2Review({ onBack }) {
           </tbody>
         </table>
       </div>
+
+      {/* ── CMHC Underwriting Ratios ── */}
+      {(() => {
+        const loanAmount = c.valueConclusion != null ? c.valueConclusion * 0.75 : null // assume 75% LTV
+        const annualDebtService = loanAmount != null ? loanAmount * 0.055 : null // assume 5.5% constant
+        const dcr = c.noi > 0 && annualDebtService > 0 ? c.noi / annualDebtService : null
+        const ltv = c.valueConclusion > 0 && c.purchasePrice > 0 ? (c.purchasePrice > c.valueConclusion ? 1 : c.purchasePrice / c.valueConclusion) : null
+        const breakEvenOcc = c.grossRent > 0 ? (c.totalOpEx + (annualDebtService ?? 0)) / c.grossRent : null
+        const debtYield = loanAmount > 0 && c.noi > 0 ? c.noi / loanAmount : null
+        const opExRatio = c.egi > 0 ? c.totalOpEx / c.egi : null
+
+        const CMHC_THRESHOLDS = [
+          { label: 'Debt Coverage Ratio (DCR)', value: dcr, format: (v) => v?.toFixed(2) + 'x', threshold: 1.1, direction: 'min', cmhcMin: '≥ 1.10x' },
+          { label: 'Loan-to-Value (LTV)', value: ltv, format: PCT, threshold: 0.75, direction: 'max', cmhcMax: '≤ 75%' },
+          { label: 'Break-Even Occupancy', value: breakEvenOcc, format: PCT, threshold: 0.85, direction: 'max', cmhcMax: '≤ 85%' },
+          { label: 'Debt Yield', value: debtYield, format: PCT, threshold: 0.08, direction: 'min', cmhcMin: '≥ 8%' },
+          { label: 'Operating Expense Ratio', value: opExRatio, format: PCT, threshold: null, direction: null, cmhcMax: 'Varies' },
+        ]
+
+        return (
+          <div className="bg-white border border-border rounded-sm overflow-hidden">
+            <div className="px-5 py-3 bg-primary/[0.04] border-b border-border flex items-center justify-between">
+              <h3 className="text-xs font-bold text-primary uppercase tracking-widest">CMHC Underwriting Ratios</h3>
+              <span className="text-[10px] text-[#aaa]">Based on estimated 75% LTV, 5.5% debt constant</span>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-surface">
+                  <th className="py-1.5 pl-5 text-left text-[10px] font-semibold text-[#aaa] uppercase tracking-wide w-[35%]">Metric</th>
+                  <th className="py-1.5 text-right text-[10px] font-semibold text-[#aaa] uppercase tracking-wide w-[20%]">Value</th>
+                  <th className="py-1.5 text-center text-[10px] font-semibold text-[#aaa] uppercase tracking-wide w-[20%]">CMHC Threshold</th>
+                  <th className="py-1.5 pr-5 text-right text-[10px] font-semibold text-[#aaa] uppercase tracking-wide w-[25%]">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CMHC_THRESHOLDS.map(({ label, value, format, threshold, direction, cmhcMin, cmhcMax }) => {
+                  let status = 'neutral'
+                  let statusLabel = '—'
+                  if (value != null && threshold != null) {
+                    if (direction === 'min') {
+                      status = value >= threshold ? 'pass' : 'fail'
+                      statusLabel = value >= threshold ? 'Meets CMHC' : 'Below CMHC minimum'
+                    } else if (direction === 'max') {
+                      status = value <= threshold ? 'pass' : 'fail'
+                      statusLabel = value <= threshold ? 'Meets CMHC' : 'Exceeds CMHC limit'
+                    }
+                  }
+                  return (
+                    <tr key={label} className={`border-b border-border last:border-0 ${status === 'fail' ? 'bg-red-50/50' : ''}`}>
+                      <td className="py-2.5 pl-5 text-sm text-[#333]">{label}</td>
+                      <td className={`py-2.5 text-right text-sm font-semibold tabular-nums ${value == null ? 'text-[#ccc]' : 'text-primary'}`}>
+                        {value != null ? format(value) : '—'}
+                      </td>
+                      <td className="py-2.5 text-center text-xs text-[#888]">{cmhcMin || cmhcMax}</td>
+                      <td className="py-2.5 pr-5 text-right">
+                        {status === 'pass' && <span className="text-[11px] px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">Pass</span>}
+                        {status === 'fail' && <span className="text-[11px] px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium">Fail</span>}
+                        {status === 'neutral' && <span className="text-[11px] text-[#ccc]">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      })()}
+
+      {/* ── Sensitivity Analysis ── */}
+      {c.noi > 0 && c.capRate > 0 && (
+        <Collapsible title="Sensitivity Analysis" badge="Cap Rate × Vacancy">
+          {(() => {
+            const baseCapRate = c.capRate
+            const baseVacancy = c.vacancyPct
+            const capRates = [
+              baseCapRate - 0.01,
+              baseCapRate - 0.005,
+              baseCapRate,
+              baseCapRate + 0.005,
+              baseCapRate + 0.01,
+            ].filter((r) => r > 0)
+            const vacancies = [
+              Math.max(0, baseVacancy - 0.02),
+              Math.max(0, baseVacancy - 0.01),
+              baseVacancy,
+              baseVacancy + 0.01,
+              baseVacancy + 0.02,
+            ]
+
+            function calcValue(cr, vac) {
+              const adjVacancyAmt = c.grossRent * vac
+              const adjEgi = c.grossRent - adjVacancyAmt
+              const adjMgmt = adjEgi * 0.035
+              const adjReserve = adjEgi * 0.01
+              const adjOpEx = c.propTaxes + c.utilities + c.otherRecov + adjMgmt + adjReserve
+              const adjNoi = adjEgi - adjOpEx
+              return cr > 0 ? adjNoi / cr : null
+            }
+
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-surface">
+                      <th className="py-2 px-3 text-left text-[10px] font-semibold text-[#aaa] uppercase">
+                        Cap Rate ↓ / Vacancy →
+                      </th>
+                      {vacancies.map((vac) => (
+                        <th key={vac} className={`py-2 px-3 text-right text-[10px] font-semibold uppercase ${vac === baseVacancy ? 'text-primary bg-primary/[0.05]' : 'text-[#aaa]'}`}>
+                          {PCT(vac)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {capRates.map((cr) => (
+                      <tr key={cr} className="border-b border-border last:border-0">
+                        <td className={`py-2 px-3 text-sm font-medium ${cr === baseCapRate ? 'text-primary bg-primary/[0.05]' : 'text-[#555]'}`}>
+                          {PCT(cr)}
+                        </td>
+                        {vacancies.map((vac) => {
+                          const val = calcValue(cr, vac)
+                          const isBase = cr === baseCapRate && vac === baseVacancy
+                          return (
+                            <td key={vac} className={`py-2 px-3 text-right text-sm tabular-nums ${
+                              isBase
+                                ? 'font-bold text-primary bg-primary/[0.08] border border-primary/20'
+                                : 'text-[#444]'
+                            }`}>
+                              {val != null ? CAD(val) : '—'}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[10px] text-[#aaa] px-3 py-2">
+                  Highlighted cell is the base case ({PCT(baseCapRate)} cap, {PCT(baseVacancy)} vacancy). Values show implied property value (NOI ÷ Cap Rate) at each scenario.
+                </p>
+              </div>
+            )
+          })()}
+        </Collapsible>
+      )}
 
       {/* ── Rent Roll ── */}
       <RentRoll tenants={tenants} onSave={saveTenant} />

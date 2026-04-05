@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { buildAppraisalPrompt, buildRentRollPrompt } from './utils/dummyExtractionPrompt.js'
 import { applyQuebecConversions } from './utils/quebecUnits.js'
+import { researchProperty } from './utils/marketResearch.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: join(__dirname, '.env') })
@@ -522,6 +523,30 @@ async function processAndStorePdf(s3, supabase, pdfKey, docType, propertyId, add
     await s3Delete(s3, pdfKey)
     await clearRetry(s3, pdfKey)
     console.log(`[Worker]   ✓ ${pdfKey.split('/').pop()} stored and cleaned up`)
+
+    // ── Auto-research market data (only once per property) ──
+    if (propertyId && docType === 'appraisal') {
+      try {
+        const { data: prop } = await supabase
+          .from('property')
+          .select('property_address, market_research_at')
+          .eq('id', propertyId)
+          .single()
+
+        if (prop && !prop.market_research_at) {
+          console.log(`[Worker]   Researching market data for ${prop.property_address}...`)
+          const research = await researchProperty(prop.property_address, process.env.ANTHROPIC_API_KEY)
+          await supabase.from('property').update({
+            ...research,
+            market_research_at: new Date().toISOString(),
+          }).eq('id', propertyId)
+          console.log(`[Worker]   ✓ Market research saved`)
+        }
+      } catch (researchErr) {
+        // Non-fatal — don't fail the pipeline over research
+        console.warn(`[Worker]   Market research failed (non-fatal): ${researchErr.message}`)
+      }
+    }
 
     return { propertyId, skipped: false }
 

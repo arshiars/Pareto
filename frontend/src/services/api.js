@@ -159,6 +159,80 @@ export async function fetchPropertyDetail(propertyId) {
   return res.json()
 }
 
+export async function deleteUnits(ids) {
+  const res = await fetch(`${BASE_URL}/comparables/units`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function enrichUnits(propertyId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/enrich-units`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function checkDuplicateAddress(address) {
+  const res = await fetch(`${BASE_URL}/comparables/check-duplicate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ address }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function aiRankComps(subject, candidates) {
+  const res = await fetch(`${BASE_URL}/comparables/ai-rank-comps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ subject, candidates }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function researchSubjectProperty(address) {
+  const res = await fetch(`${BASE_URL}/comparables/research-subject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ address }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function researchMarketData(propertyId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/research`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+export async function translateProperty(propertyId) {
+  const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/translate`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
 export async function renamePropertyAddress(propertyId, address) {
   const res = await fetch(`${BASE_URL}/comparables/property/${propertyId}/address`, {
     method: 'PATCH',

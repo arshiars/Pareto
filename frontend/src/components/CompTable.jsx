@@ -160,7 +160,89 @@ const SUMMARY_ROWS = [
   { key: 'mean', label: 'Mean' },
 ]
 
-function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, onRemoveRow, onReorderColumns, onReorderRows, rowOrder, overrides, onOverride, hoveredAddress, onHoverAddress }) {
+function ScoreTooltip({ score }) {
+  if (!score) return null
+
+  function QualityBadge({ quality }) {
+    if (quality === 'strong') return <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-green-100 text-green-700">Strong Match</span>
+    if (quality === 'good') return <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700">Good Match</span>
+    return <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-amber-100 text-amber-700">Fair Match</span>
+  }
+
+  function BarLabel({ quality }) {
+    if (quality < 0.3) return <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">Strong</span>
+    if (quality < 0.6) return <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Fair</span>
+    return <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">Weak</span>
+  }
+
+  return (
+    <div className="w-80 bg-white border border-border rounded-xl shadow-xl p-4">
+      {score.aiReason ? (
+        <>
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#999]">AI Analysis</span>
+            <QualityBadge quality={score.aiQuality} />
+          </div>
+          <p className="text-[12px] text-[#333] leading-relaxed mb-2">{score.aiReason}</p>
+          {score.aiCaveat && (
+            <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5">
+              <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+              <p className="text-[10px] text-amber-800 leading-snug">{score.aiCaveat}</p>
+            </div>
+          )}
+          {score.breakdown && (
+            <div className="pt-2.5 border-t border-border space-y-1.5">
+              <span className="text-[9px] text-[#999] uppercase tracking-wider font-medium">Score Breakdown</span>
+              {Object.entries(score.breakdown).map(([key, b]) => {
+                const quality = b.score / b.weight
+                const color = quality < 0.3 ? 'bg-green-500' : quality < 0.6 ? 'bg-amber-500' : 'bg-red-400'
+                return (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="text-[9px] text-[#777] w-16 flex-shrink-0">{key === 'storeys' ? 'Storeys' : key === 'unitCount' ? 'Units' : key === 'yearBuilt' ? 'Age' : key === 'buildingType' ? 'Type' : 'Distance'}</span>
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(5, 100 - (quality * 100))}%` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#999]">Match Score</span>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded ${score.totalScore < 25 ? 'bg-green-100 text-green-700' : score.totalScore < 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+              {Math.round(100 - score.totalScore)}%
+            </span>
+          </div>
+          <div className="space-y-2">
+            {score.breakdown && Object.entries(score.breakdown).map(([key, b]) => {
+              const quality = b.score / b.weight
+              const color = quality < 0.3 ? 'bg-green-500' : quality < 0.6 ? 'bg-amber-500' : 'bg-red-400'
+              const label = key === 'storeys' ? 'Storeys' : key === 'unitCount' ? 'Unit Count' : key === 'yearBuilt' ? 'Year Built' : key === 'buildingType' ? 'Building Type' : 'Proximity'
+              return (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px] text-[#555]">{label}</span>
+                    <BarLabel quality={quality} />
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(5, 100 - (quality * 100))}%` }} />
+                  </div>
+                  <p className="text-[9px] text-[#999] mt-0.5">{b.detail}</p>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, onRemoveRow, onReorderColumns, onReorderRows, rowOrder, overrides, onOverride, hoveredAddress, onHoverAddress, compScores }) {
+
   const [editingCell, setEditingCell] = useState(null) // { address, colKey }
   const [editValue, setEditValue] = useState('')
   const [dragOverCol, setDragOverCol] = useState(null)
@@ -168,6 +250,8 @@ function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, 
   const dragColRef = useRef(null)
   const dragRowRef = useRef(null)
   const inputRef = useRef(null)
+  const [activeTooltip, setActiveTooltip] = useState(null) // { address, rect }
+  const tooltipTimerRef = useRef(null)
 
   const propertyData = useMemo(() => {
     const rows = []
@@ -354,10 +438,12 @@ function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, 
                     <td
                       key={col.key}
                       className={`px-4 py-3 text-[13px] text-[#333] whitespace-nowrap ${
-                        col.key === 'address' ? 'sticky left-14 bg-white group-hover/row:bg-blue-50/30 z-10' : ''
+                        col.key === 'address' ? 'sticky left-14 bg-white group-hover/row:bg-blue-50/30 z-10 overflow-visible' : ''
                       }`}
                     >
-                      {col.key === 'address' ? (
+                      {col.key === 'address' ? (() => {
+                        const score = compScores?.[row._address]
+                        return (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => onSelectProperty?.(row._address)}
@@ -365,6 +451,20 @@ function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, 
                           >
                             {row[col.key]}
                           </button>
+                          {score && (
+                            <button
+                              className="flex-shrink-0 w-5 h-5 rounded-full bg-gray-100 hover:bg-blue-50 flex items-center justify-center cursor-help transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setActiveTooltip((prev) => prev?.address === row._address ? null : { address: row._address, top: rect.top, left: rect.right + 8 })
+                              }}
+                            >
+                              <svg className="w-3 h-3 text-[#999]" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
                           <a
                             href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row._address)}`}
                             target="_blank"
@@ -378,7 +478,8 @@ function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, 
                             </svg>
                           </a>
                         </div>
-                      ) : (() => {
+                        )
+                      })() : (() => {
                         const isEditing = editingCell?.address === row._address && editingCell?.colKey === col.key
                         const isOverridden = overrides[`${row._address}___${col.key}`] !== undefined
                         if (isEditing) {
@@ -443,13 +544,26 @@ function BedTable({ beds, byAddress, columns, onSelectProperty, onRemoveColumn, 
           </table>
         </div>
       </div>
+
+      {/* Fixed-position tooltip for comp scores */}
+      {activeTooltip && compScores?.[activeTooltip.address] && (
+        <>
+          <div className="fixed inset-0 z-[199]" onClick={() => setActiveTooltip(null)} />
+          <div
+            className="fixed z-[200]"
+            style={{ top: activeTooltip.top, left: activeTooltip.left }}
+          >
+            <ScoreTooltip score={compScores[activeTooltip.address]} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CompTable({ selectedAddresses, units, onSelectProperty, pinStarCoords }) {
+export default function CompTable({ selectedAddresses, units, onSelectProperty, pinStarCoords, subjectProfile, compScores }) {
   const [activeColumns, setActiveColumns] = useState(DEFAULT_COLUMN_KEYS)
   const [showAddColumn, setShowAddColumn] = useState(false)
   const [hiddenAddresses, setHiddenAddresses] = useState(new Set())
@@ -609,6 +723,30 @@ export default function CompTable({ selectedAddresses, units, onSelectProperty, 
         </div>
       </div>
 
+      {/* Subject property banner */}
+      {subjectProfile && (
+        <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex-shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="#f59e0b" stroke="#d97706" strokeWidth="1">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              <div>
+                <span className="text-[10px] text-amber-600 uppercase tracking-wider font-semibold">Subject Property</span>
+                <p className="text-sm font-semibold text-amber-900">{subjectProfile.address}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-amber-700">
+              {subjectProfile.yearBuilt && <span className="flex items-center gap-1"><span className="text-amber-500 font-medium">Built</span> {subjectProfile.yearBuilt}</span>}
+              {subjectProfile.unitCount > 0 && <span className="flex items-center gap-1"><span className="text-amber-500 font-medium">Units</span> {subjectProfile.unitCount}</span>}
+              {subjectProfile.storeys && <span className="flex items-center gap-1"><span className="text-amber-500 font-medium">Storeys</span> {subjectProfile.storeys}</span>}
+              {subjectProfile.propertyType && <span className="flex items-center gap-1"><span className="text-amber-500 font-medium">Type</span> {subjectProfile.propertyType}</span>}
+            </div>
+            {subjectProfile.source === 'web_research' && <span className="text-[9px] text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded ml-auto">AI researched</span>}
+          </div>
+        </div>
+      )}
+
       {/* Tabs + table + map */}
       <div className="flex-1 overflow-auto px-6 pb-5 flex flex-col">
 
@@ -648,6 +786,7 @@ export default function CompTable({ selectedAddresses, units, onSelectProperty, 
             onOverride={handleOverride}
             hoveredAddress={hoveredAddress}
             onHoverAddress={setHoveredAddress}
+            compScores={compScores}
           />
         ) : (
           <div className="flex items-center justify-center h-40 text-sm text-[#999]">

@@ -3,9 +3,14 @@ export function buildIppExtractionPrompt() {
 
 Your task is to extract structured data and return a single valid JSON object. Do NOT wrap the JSON in markdown code fences. Do NOT include any explanation or prose — only the JSON object.
 
-IMPORTANT: Every leaf field must be an object with two keys:
+IMPORTANT: Every leaf field must be an object with three keys:
   "value": the extracted value, or null if not found
   "source": a short string describing where you found it (e.g., "Broker CIM", "Rent Roll, p.4", "Operating Statement", "Tax Bill"), or null if not found
+  "confidence": "high", "medium", or "low" — your confidence that the extracted value is correct:
+    - "high": value is clearly stated in the document, unambiguous, and directly readable
+    - "medium": value required interpretation, calculation, or was partially obscured/ambiguous
+    - "low": value is estimated, inferred from context, or the document quality made it hard to read
+    - null if value is null
 
 For monetary amounts, "value" must be a number with no $ signs or commas.
 For percentages, "value" must be a decimal (e.g., 0.05 for 5%).
@@ -18,78 +23,78 @@ Return exactly this JSON structure:
 
 {
   "propertyInfo": {
-    "address":   { "value": null, "source": null },
-    "siteArea":  { "value": null, "source": null },
-    "yearBuilt": { "value": null, "source": null },
-    "stories":   { "value": null, "source": null },
-    "buildings": { "value": null, "source": null },
-    "parking":   { "value": null, "source": null },
-    "vacant":    { "value": null, "source": null }
+    "address":   { "value": null, "source": null, "confidence": null },
+    "siteArea":  { "value": null, "source": null, "confidence": null },
+    "yearBuilt": { "value": null, "source": null, "confidence": null },
+    "stories":   { "value": null, "source": null, "confidence": null },
+    "buildings": { "value": null, "source": null, "confidence": null },
+    "parking":   { "value": null, "source": null, "confidence": null },
+    "vacant":    { "value": null, "source": null, "confidence": null }
   },
   "income": {
     "otherMiscRent": {
-      "parkingRent":  { "value": null, "source": null },
-      "storageRent":  { "value": null, "source": null },
-      "other":        { "value": null, "source": null },
-      "annualTotal":  { "value": null, "source": null }
+      "parkingRent":  { "value": null, "source": null, "confidence": null },
+      "storageRent":  { "value": null, "source": null, "confidence": null },
+      "other":        { "value": null, "source": null, "confidence": null },
+      "annualTotal":  { "value": null, "source": null, "confidence": null }
     },
     "recoverableRent": {
-      "propertyTax": { "value": null, "source": null },
-      "utilities":   { "value": null, "source": null },
-      "allOther":    { "value": null, "source": null }
+      "propertyTax": { "value": null, "source": null, "confidence": null },
+      "utilities":   { "value": null, "source": null, "confidence": null },
+      "allOther":    { "value": null, "source": null, "confidence": null }
     },
-    "vacancyAllowancePct": { "value": null, "source": null }
+    "vacancyAllowancePct": { "value": null, "source": null, "confidence": null }
   },
   "expenses": {
-    "propertyTaxes":             { "value": null, "source": null },
-    "utilities":                 { "value": null, "source": null },
-    "otherRecoverableExpenses":  { "value": null, "source": null },
-    "managementFee":             { "value": null, "source": null },
-    "structuralReserve":         { "value": null, "source": null }
+    "propertyTaxes":             { "value": null, "source": null, "confidence": null },
+    "utilities":                 { "value": null, "source": null, "confidence": null },
+    "otherRecoverableExpenses":  { "value": null, "source": null, "confidence": null },
+    "managementFee":             { "value": null, "source": null, "confidence": null },
+    "structuralReserve":         { "value": null, "source": null, "confidence": null }
   },
-  "capRate": { "value": null, "source": null },
+  "capRate": { "value": null, "source": null, "confidence": null },
   "deductions": {
-    "tenantInducements": { "value": null, "source": null },
-    "lcs":               { "value": null, "source": null },
-    "noiLoss":           { "value": null, "source": null },
-    "requiredCapEx":     { "value": null, "source": null }
+    "tenantInducements": { "value": null, "source": null, "confidence": null },
+    "lcs":               { "value": null, "source": null, "confidence": null },
+    "noiLoss":           { "value": null, "source": null, "confidence": null },
+    "requiredCapEx":     { "value": null, "source": null, "confidence": null }
   },
   "acquisition": {
-    "purchasePrice":           { "value": null, "source": null },
-    "landCost":                { "value": null, "source": null },
-    "appraisalSurplus":        { "value": null, "source": null },
-    "landValue":               { "value": null, "source": null },
-    "dcsAndLevies":            { "value": null, "source": null },
-    "hardCosts":               { "value": null, "source": null },
-    "contingency":             { "value": null, "source": null },
-    "softCosts":               { "value": null, "source": null },
-    "devManagementFee":        { "value": null, "source": null },
-    "financingCosts":          { "value": null, "source": null },
-    "totalBudget":             { "value": null, "source": null },
-    "totalKingsettExposure":   { "value": null, "source": null },
-    "subDebtAmount":           { "value": null, "source": null }
+    "purchasePrice":           { "value": null, "source": null, "confidence": null },
+    "landCost":                { "value": null, "source": null, "confidence": null },
+    "appraisalSurplus":        { "value": null, "source": null, "confidence": null },
+    "landValue":               { "value": null, "source": null, "confidence": null },
+    "dcsAndLevies":            { "value": null, "source": null, "confidence": null },
+    "hardCosts":               { "value": null, "source": null, "confidence": null },
+    "contingency":             { "value": null, "source": null, "confidence": null },
+    "softCosts":               { "value": null, "source": null, "confidence": null },
+    "devManagementFee":        { "value": null, "source": null, "confidence": null },
+    "financingCosts":          { "value": null, "source": null, "confidence": null },
+    "totalBudget":             { "value": null, "source": null, "confidence": null },
+    "totalKingsettExposure":   { "value": null, "source": null, "confidence": null },
+    "subDebtAmount":           { "value": null, "source": null, "confidence": null }
   },
   "usesOfFunds": {
-    "payoutExistingDebt": { "value": null, "source": null },
-    "purchasePrice":      { "value": null, "source": null },
-    "closingCosts":       { "value": null, "source": null },
-    "equityTakeout":      { "value": null, "source": null }
+    "payoutExistingDebt": { "value": null, "source": null, "confidence": null },
+    "purchasePrice":      { "value": null, "source": null, "confidence": null },
+    "closingCosts":       { "value": null, "source": null, "confidence": null },
+    "equityTakeout":      { "value": null, "source": null, "confidence": null }
   },
   "tenants": []
 }
 
 For each occupied tenant AND each vacant unit found in a rent roll or lease schedule, append an object to "tenants":
 {
-  "tenant":        { "value": null, "source": null },
-  "area":          { "value": null, "source": null },
-  "rate":          { "value": null, "source": null },
-  "annualRent":    { "value": null, "source": null },
-  "leaseStart":    { "value": null, "source": null },
-  "leaseEnd":      { "value": null, "source": null },
-  "renewalOption": { "value": null, "source": null },
-  "rentSteps":     { "value": null, "source": null },
-  "tiAmount":      { "value": null, "source": null },
-  "lcAmount":      { "value": null, "source": null }
+  "tenant":        { "value": null, "source": null, "confidence": null },
+  "area":          { "value": null, "source": null, "confidence": null },
+  "rate":          { "value": null, "source": null, "confidence": null },
+  "annualRent":    { "value": null, "source": null, "confidence": null },
+  "leaseStart":    { "value": null, "source": null, "confidence": null },
+  "leaseEnd":      { "value": null, "source": null, "confidence": null },
+  "renewalOption": { "value": null, "source": null, "confidence": null },
+  "rentSteps":     { "value": null, "source": null, "confidence": null },
+  "tiAmount":      { "value": null, "source": null, "confidence": null },
+  "lcAmount":      { "value": null, "source": null, "confidence": null }
 }
 
 Additional rules:
@@ -121,16 +126,16 @@ Return exactly this structure:
 {
   "tenants": [
     {
-      "tenant":        { "value": null, "source": null },
-      "area":          { "value": null, "source": null },
-      "rate":          { "value": null, "source": null },
-      "annualRent":    { "value": null, "source": null },
-      "leaseStart":    { "value": null, "source": null },
-      "leaseEnd":      { "value": null, "source": null },
-      "renewalOption": { "value": null, "source": null },
-      "rentSteps":     { "value": null, "source": null },
-      "tiAmount":      { "value": null, "source": null },
-      "lcAmount":      { "value": null, "source": null }
+      "tenant":        { "value": null, "source": null, "confidence": null },
+      "area":          { "value": null, "source": null, "confidence": null },
+      "rate":          { "value": null, "source": null, "confidence": null },
+      "annualRent":    { "value": null, "source": null, "confidence": null },
+      "leaseStart":    { "value": null, "source": null, "confidence": null },
+      "leaseEnd":      { "value": null, "source": null, "confidence": null },
+      "renewalOption": { "value": null, "source": null, "confidence": null },
+      "rentSteps":     { "value": null, "source": null, "confidence": null },
+      "tiAmount":      { "value": null, "source": null, "confidence": null },
+      "lcAmount":      { "value": null, "source": null, "confidence": null }
     }
   ]
 }
@@ -156,7 +161,7 @@ export function buildExpenseFieldExtractionPrompt(fieldDescription) {
 "${fieldDescription}"
 
 Return a single valid JSON object only — no markdown, no prose:
-{ "value": null, "source": null }
+{ "value": null, "source": null, "confidence": null }
 
 Rules:
 - value must be an annual dollar amount (number, no $ or commas)
@@ -172,17 +177,17 @@ Every field uses { "value": ..., "source": "Lease" } structure. Return null valu
 
 Return exactly this structure:
 {
-  "tenant":        { "value": null, "source": null },
-  "area":          { "value": null, "source": null },
-  "rate":          { "value": null, "source": null },
-  "annualRent":    { "value": null, "source": null },
-  "leaseStart":    { "value": null, "source": null },
-  "leaseEnd":      { "value": null, "source": null },
-  "renewalOption": { "value": null, "source": null },
-  "rentSteps":     { "value": null, "source": null },
-  "tiAmount":      { "value": null, "source": null },
-  "lcAmount":      { "value": null, "source": null },
-  "notes":         { "value": null, "source": null }
+  "tenant":        { "value": null, "source": null, "confidence": null },
+  "area":          { "value": null, "source": null, "confidence": null },
+  "rate":          { "value": null, "source": null, "confidence": null },
+  "annualRent":    { "value": null, "source": null, "confidence": null },
+  "leaseStart":    { "value": null, "source": null, "confidence": null },
+  "leaseEnd":      { "value": null, "source": null, "confidence": null },
+  "renewalOption": { "value": null, "source": null, "confidence": null },
+  "rentSteps":     { "value": null, "source": null, "confidence": null },
+  "tiAmount":      { "value": null, "source": null, "confidence": null },
+  "lcAmount":      { "value": null, "source": null, "confidence": null },
+  "notes":         { "value": null, "source": null, "confidence": null }
 }
 
 Rules:

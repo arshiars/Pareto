@@ -18,13 +18,95 @@ import {
   uploadPropertyImage,
   setPreviewImage,
   deletePropertyImage,
+  researchMarketData,
+  researchSubjectProperty,
+  aiRankComps,
+  checkDuplicateAddress,
+  enrichUnits,
+  deleteUnits,
 } from '../services/api.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// ─── Haversine distance ─────────────────────────────────────────────────────
+
+function distanceMiles(lat1, lng1, lat2, lng2) {
+  const R = 3958.8
+  const dLat = (lat2 - lat1) * (Math.PI / 180)
+  const dLng = (lng2 - lng1) * (Math.PI / 180)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// ─── Comparable scoring ─────────────────────────────────────────────────────
+// Scores a candidate property against a subject. Lower score = better match.
+// Weights: proximity (40%), unit count (15%), bed mix (20%), year built (15%), building type (10%)
+
+function scoreComparable(subject, candidate, distance) {
+  const breakdown = {}
+
+  // 1. Proximity (40%) — 0 mi = 0, 5+ mi = 1
+  const proxRaw = Math.min(distance / 5, 1)
+  breakdown.proximity = { score: proxRaw * 40, weight: 40, distance: Math.round(distance * 10) / 10, detail: `${Math.round(distance * 10) / 10} mi away` }
+
+  // 2. Unit count similarity (15%)
+  if (subject.unitCount > 0 && candidate.unitCount > 0) {
+    const ratio = Math.abs(subject.unitCount - candidate.unitCount) / Math.max(subject.unitCount, candidate.unitCount)
+    breakdown.unitCount = { score: ratio * 15, weight: 15, subject: subject.unitCount, candidate: candidate.unitCount, detail: `${candidate.unitCount} units (subject: ${subject.unitCount})` }
+  } else {
+    breakdown.unitCount = { score: 7.5, weight: 15, detail: 'Unit count unknown' }
+  }
+
+  // 3. Storeys similarity (20%) — low-rise vs mid-rise vs high-rise
+  if (subject.storeys && candidate.storeys) {
+    const diff = Math.abs(Number(subject.storeys) - Number(candidate.storeys))
+    const storeysRaw = Math.min(diff / 15, 1) // 15+ storey diff = max penalty
+    breakdown.storeys = { score: storeysRaw * 20, weight: 20, subject: subject.storeys, candidate: candidate.storeys, detail: `${candidate.storeys} storeys (subject: ${subject.storeys}, ${diff} diff)` }
+  } else {
+    breakdown.storeys = { score: 10, weight: 20, detail: 'Storeys unknown' }
+  }
+
+  // 4. Year built proximity (15%)
+  if (subject.yearBuilt && candidate.yearBuilt) {
+    const yrDiff = Math.abs(Number(subject.yearBuilt) - Number(candidate.yearBuilt))
+    breakdown.yearBuilt = { score: Math.min(yrDiff / 30, 1) * 15, weight: 15, subject: subject.yearBuilt, candidate: candidate.yearBuilt, detail: `Built ${candidate.yearBuilt} (subject: ${subject.yearBuilt}, ${yrDiff}yr diff)` }
+  } else {
+    breakdown.yearBuilt = { score: 7.5, weight: 15, detail: 'Year built unknown' }
+  }
+
+  // 5. Building type match (10%)
+  if (subject.propertyType && candidate.propertyType) {
+    const match = subject.propertyType.toLowerCase() === candidate.propertyType.toLowerCase()
+    breakdown.buildingType = { score: (match ? 0 : 1) * 10, weight: 10, match, detail: match ? `Same type: ${candidate.propertyType}` : `${candidate.propertyType} (subject: ${subject.propertyType})` }
+  } else {
+    breakdown.buildingType = { score: 5, weight: 10, detail: 'Building type unknown' }
+  }
+
+  const totalScore = Object.values(breakdown).reduce((s, b) => s + b.score, 0)
+  return { totalScore, breakdown }
+}
+
+function buildPropertyProfile(units) {
+  return {
+    unitCount: units.length,
+    storeys: units[0]?.num_floors ?? null,
+    yearBuilt: units[0]?.year_built ?? null,
+    propertyType: units[0]?.property_type ?? null,
+    constructionFrame: units[0]?.construction_frame ?? null,
+  }
+}
+
 function fmtCurrency(val) {
   if (val == null) return '—'
   return '$' + Number(val).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
+function fmtPsf(lease_rate, sqft) {
+  if (lease_rate == null || sqft == null || Number(sqft) === 0) return '—'
+  const psf = Number(lease_rate) / Number(sqft)
+  return '$' + psf.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtDate(val) {
@@ -59,6 +141,26 @@ function groupByProperty(units) {
   return Array.from(map.values())
 }
 
+// ─── Editable cell for edit-mode tables ─────────────────────────────────────
+
+const CELL_INPUT_BASE = 'text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary'
+
+function EditableCell({ value, onChange, onBlur, type, width, saving }) {
+  return (
+    <div className="relative">
+      <input
+        type={type || 'text'}
+        className={`${CELL_INPUT_BASE} ${width}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }}
+      />
+      {saving && <div className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
+    </div>
+  )
+}
+
 // ─── Shared header ───────────────────────────────────────────────────────────
 
 function PageHeader({ onBack }) {
@@ -91,50 +193,60 @@ function PageHeader({ onBack }) {
 
 // ─── Property Detail Sections ────────────────────────────────────────────────
 
-const PROPERTY_SECTIONS = [
-  { title: 'General', fields: [
-    ['property_type', 'Property Type'], ['zoning', 'Zoning'], ['municipality', 'Municipality'],
-    ['year_built', 'Year Built'], ['num_floors', 'Floors'], ['num_units_total', 'Total Units'],
-    ['unit_mix_description', 'Unit Mix'], ['construction_status', 'Status'],
-    ['current_owner', 'Owner'], ['ownership_type', 'Ownership Type'],
-  ]},
-  { title: 'Building & Construction', fields: [
-    ['construction_frame', 'Frame'], ['foundation_type', 'Foundation'],
-    ['exterior_cladding', 'Cladding'], ['roof_type', 'Roof Type'], ['roof_material', 'Roof Material'],
-    ['window_type', 'Windows'], ['wall_finish', 'Wall Finish'], ['ceiling_type', 'Ceiling'],
-    ['doors_exterior', 'Exterior Doors'], ['doors_interior', 'Interior Doors'],
-  ]},
-  { title: 'Area & Lot', fields: [
-    ['sqft_total_building', 'Total Building Sqft'], ['sqft_per_unit_habitable', 'Sqft/Unit'],
-    ['sqft_ground_floor', 'Ground Floor'], ['sqft_upper_floors', 'Upper Floors'],
-    ['sqft_basement', 'Basement'], ['basement_finished_pct', 'Basement Finished %'],
-    ['lot_size_total', 'Lot Size'], ['lot_frontage', 'Frontage'], ['lot_depth', 'Depth'],
-    ['lot_configuration', 'Configuration'], ['lot_topography', 'Topography'], ['lot_access', 'Access'],
-  ]},
-  { title: 'Mechanical & Electrical', fields: [
-    ['heating_type', 'Heating'], ['heating_fuel', 'Fuel'], ['heating_num_units', 'Heating Units'],
-    ['ac_type', 'AC Type'], ['ac_num_units', 'AC Units'],
-    ['electrical_amperage', 'Amperage'], ['electrical_panel_type', 'Panel'], ['electrical_network_type', 'Network'],
-    ['hot_water_tank_type', 'Hot Water'], ['hot_water_energy_source', 'HW Energy'],
-  ]},
-  { title: 'Interior Finishes', fields: [
-    ['kitchen_cabinets', 'Cabinets'], ['kitchen_countertops', 'Countertops'], ['kitchen_appliances', 'Appliances'],
-    ['flooring_living', 'Living Flooring'], ['flooring_kitchen', 'Kitchen Flooring'],
-    ['flooring_bathroom', 'Bathroom Flooring'], ['flooring_basement', 'Basement Flooring'],
-    ['bathrooms_per_unit', 'Baths/Unit'], ['bathroom_fixtures', 'Fixtures'],
-    ['bathroom_vanity_finish', 'Vanity'], ['bathroom_tub_shower_finish', 'Tub/Shower'],
-    ['laundry_type', 'Laundry'], ['laundry_location', 'Laundry Location'],
-  ]},
-  { title: 'Amenities & Features', fields: [
-    ['amenity_elevator', 'Elevator'], ['amenity_intercoms', 'Intercoms'],
-    ['amenity_fire_suppression', 'Fire Suppression'], ['amenity_central_vacuum', 'Central Vacuum'],
-    ['amenity_emergency_lighting', 'Emergency Lighting'], ['amenity_exterior_lighting', 'Exterior Lighting'],
-    ['amenity_security_cameras', 'Security Cameras'], ['amenity_other_common', 'Other'],
-    ['unit_balcony', 'Balcony'], ['unit_washer_dryer_hookup', 'W/D Hookup'],
-    ['unit_ac', 'Unit AC'], ['unit_other_features', 'Other Features'],
-    ['parking_total_spaces', 'Parking Spaces'], ['parking_type', 'Parking Type'], ['parking_per_unit', 'Parking/Unit'],
-    ['storage_lockers_num', 'Storage Lockers'], ['storage_lockers_type', 'Storage Type'],
-  ]},
+// ─── Property detail field formatting ────────────────────────────────────────
+
+const CURRENCY_FIELDS = new Set([
+  'appraised_value', 'value_per_unit', 'value_per_sqft',
+  'gross_potential_income_annual', 'actual_rental_income_annual',
+  'commercial_parking_revenue', 'other_revenue', 'total_revenue',
+  'expense_property_taxes', 'expense_school_taxes', 'expense_insurance',
+  'expense_utilities', 'expense_maintenance', 'expense_landscaping_snow',
+  'expense_management', 'expense_vacancy_bad_debt', 'total_operating_expenses',
+  'net_operating_income', 'avg_rent_per_unit', 'deferred_maintenance_budget',
+  'special_assessment_amount', 'reserve_fund_required', 'reserve_fund_current',
+  'comparable_avg_price_per_unit',
+])
+
+const PERCENT_FIELDS = new Set([
+  'cap_rate', 'operating_expense_ratio', 'basement_finished_pct', 'reserve_fund_pct_funded',
+])
+
+const RATIO_FIELDS = new Set([
+  'gross_rent_multiplier', 'debt_service_coverage_ratio',
+])
+
+// Numeric fields that should show with commas (sqft, counts, etc.)
+const NUMERIC_FIELDS = new Set([
+  'sqft_total_building', 'sqft_per_unit_habitable', 'sqft_ground_floor',
+  'sqft_upper_floors', 'sqft_basement', 'lot_size_total', 'lot_frontage', 'lot_depth',
+  'num_units_total', 'num_floors', 'parking_total_spaces', 'storage_lockers_num',
+  'heating_num_units', 'ac_num_units', 'roof_remaining_life_yrs',
+  'num_comparables_used', 'avg_days_on_market',
+  'comparable_price_range',
+])
+
+function fmtPropertyValue(key, val) {
+  if (val == null || val === '') return '—'
+  const str = String(val)
+  const num = Number(str.replace(/,/g, ''))
+  if (CURRENCY_FIELDS.has(key) && !isNaN(num)) {
+    return '$' + num.toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  }
+  if (PERCENT_FIELDS.has(key) && !isNaN(num)) {
+    const pct = num < 1 && num > 0 ? num * 100 : num
+    return pct.toLocaleString('en-CA', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '%'
+  }
+  if (RATIO_FIELDS.has(key) && !isNaN(num)) {
+    return num.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'x'
+  }
+  if (NUMERIC_FIELDS.has(key) && !isNaN(num)) {
+    return num.toLocaleString('en-CA')
+  }
+  return str
+}
+
+// Primary sections — always visible, most relevant for rent comparable analysis
+const PRIMARY_SECTIONS = [
   { title: 'Financial', fields: [
     ['appraised_value', 'Appraised Value'], ['evaluation_date', 'Evaluation Date'],
     ['valuation_method', 'Valuation Method'], ['value_per_unit', 'Value/Unit'], ['value_per_sqft', 'Value/Sqft'],
@@ -148,6 +260,19 @@ const PROPERTY_SECTIONS = [
     ['cap_rate', 'Cap Rate'], ['gross_rent_multiplier', 'GRM'],
     ['debt_service_coverage_ratio', 'DSCR'], ['operating_expense_ratio', 'OER'], ['avg_rent_per_unit', 'Avg Rent/Unit'],
   ]},
+  { title: 'General', fields: [
+    ['property_type', 'Property Type'], ['zoning', 'Zoning'], ['municipality', 'Municipality'],
+    ['year_built', 'Year Built'], ['num_floors', 'Floors'], ['num_units_total', 'Total Units'],
+    ['unit_mix_description', 'Unit Mix'], ['construction_status', 'Status'],
+    ['current_owner', 'Owner'], ['ownership_type', 'Ownership Type'],
+  ]},
+  { title: 'Area & Lot', fields: [
+    ['sqft_total_building', 'Total Building Sqft'], ['sqft_per_unit_habitable', 'Sqft/Unit'],
+    ['sqft_ground_floor', 'Ground Floor'], ['sqft_upper_floors', 'Upper Floors'],
+    ['sqft_basement', 'Basement'], ['basement_finished_pct', 'Basement Finished %'],
+    ['lot_size_total', 'Lot Size'], ['lot_frontage', 'Frontage'], ['lot_depth', 'Depth'],
+    ['lot_configuration', 'Configuration'], ['lot_topography', 'Topography'], ['lot_access', 'Access'],
+  ]},
   { title: 'Condition & Maintenance', fields: [
     ['cladding_condition', 'Cladding'], ['windows_condition', 'Windows'], ['doors_condition', 'Doors'],
     ['roof_remaining_life_yrs', 'Roof Life (yrs)'], ['gutters_type', 'Gutters'],
@@ -159,20 +284,37 @@ const PROPERTY_SECTIONS = [
     ['moisture_issues', 'Moisture'], ['moisture_issues_detail', 'Detail'],
     ['other_maintenance_issues', 'Other'], ['deferred_maintenance_budget', 'Deferred Budget'],
   ]},
-  { title: 'Safety & Security', fields: [
-    ['fire_suppression_system', 'Fire Suppression'], ['fire_alarms', 'Fire Alarms'], ['sprinkler_system', 'Sprinklers'],
-    ['security_system', 'Security System'], ['security_cameras', 'Cameras'], ['intercoms', 'Intercoms'],
-    ['building_access_type', 'Access Type'], ['building_code_compliance', 'Code Compliance'],
+]
+
+// Secondary sections — hidden behind "Show More", less relevant for rent analysis
+const SECONDARY_SECTIONS = [
+  { title: 'Building & Construction', fields: [
+    ['construction_frame', 'Frame'], ['foundation_type', 'Foundation'],
+    ['exterior_cladding', 'Cladding'], ['roof_type', 'Roof Type'], ['roof_material', 'Roof Material'],
+    ['window_type', 'Windows'], ['wall_finish', 'Wall Finish'], ['ceiling_type', 'Ceiling'],
+    ['doors_exterior', 'Exterior Doors'], ['doors_interior', 'Interior Doors'],
   ]},
-  { title: 'Environmental & Risk', fields: [
-    ['contamination_risk', 'Contamination'], ['flood_risk', 'Flood Risk'],
-    ['soil_issues', 'Soil Issues'], ['env_certifications', 'Certifications'],
+  { title: 'Interior Finishes', fields: [
+    ['kitchen_cabinets', 'Cabinets'], ['kitchen_countertops', 'Countertops'], ['kitchen_appliances', 'Appliances'],
+    ['flooring_living', 'Living Flooring'], ['flooring_kitchen', 'Kitchen Flooring'],
+    ['flooring_bathroom', 'Bathroom Flooring'], ['flooring_basement', 'Basement Flooring'],
+    ['bathrooms_per_unit', 'Baths/Unit'], ['bathroom_fixtures', 'Fixtures'],
+    ['bathroom_vanity_finish', 'Vanity'], ['bathroom_tub_shower_finish', 'Tub/Shower'],
+    ['laundry_type', 'Laundry'], ['laundry_location', 'Laundry Location'],
   ]},
-  { title: 'Market & Comparables', fields: [
-    ['market_supply_demand', 'Supply/Demand'], ['market_price_trend', 'Price Trend'],
-    ['avg_days_on_market', 'Days on Market'], ['num_comparables_used', 'Comparables Used'],
-    ['comparable_date_range', 'Date Range'], ['comparable_price_range', 'Price Range'],
-    ['comparable_avg_price_per_unit', 'Avg Price/Unit'],
+  { title: 'Mechanical & Electrical', fields: [
+    ['heating_type', 'Heating'], ['heating_fuel', 'Fuel'], ['heating_num_units', 'Heating Units'],
+    ['ac_type', 'AC Type'], ['ac_num_units', 'AC Units'],
+    ['electrical_amperage', 'Amperage'], ['electrical_panel_type', 'Panel'], ['electrical_network_type', 'Network'],
+    ['hot_water_tank_type', 'Hot Water'], ['hot_water_energy_source', 'HW Energy'],
+  ]},
+  { title: 'Amenities & Parking', fields: [
+    ['amenity_elevator', 'Elevator'], ['amenity_intercoms', 'Intercoms'],
+    ['amenity_central_vacuum', 'Central Vacuum'],
+    ['unit_balcony', 'Balcony'], ['unit_washer_dryer_hookup', 'W/D Hookup'],
+    ['unit_ac', 'Unit AC'], ['unit_other_features', 'Other Features'],
+    ['parking_total_spaces', 'Parking Spaces'], ['parking_type', 'Parking Type'], ['parking_per_unit', 'Parking/Unit'],
+    ['storage_lockers_num', 'Storage Lockers'], ['storage_lockers_type', 'Storage Type'],
   ]},
   { title: 'Legal & Other', fields: [
     ['cadastre_reference', 'Cadastre'], ['permit_license_number', 'Permit/License'],
@@ -189,7 +331,8 @@ const PROPERTY_SECTIONS = [
 ]
 
 function PropertyDetailsPanel({ detail }) {
-  const [openSections, setOpenSections] = useState(new Set(['General', 'Financial']))
+  const [openSections, setOpenSections] = useState(new Set())
+  const [showMore, setShowMore] = useState(false)
 
   if (!detail) return null
 
@@ -201,43 +344,66 @@ function PropertyDetailsPanel({ detail }) {
     })
   }
 
+  function renderSections(sections) {
+    return sections.map(({ title, fields }) => {
+      const populated = fields.filter(([key]) => detail[key] != null && detail[key] !== '')
+      if (populated.length === 0) return null
+      const isOpen = openSections.has(title)
+
+      return (
+        <Card key={title} className="overflow-hidden">
+          <button
+            onClick={() => toggleSection(title)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-surface hover:bg-border/30 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2">
+              <svg
+                className={`w-3.5 h-3.5 text-[#777] transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-sm font-semibold text-primary">{title}</span>
+            </div>
+            <span className="text-[10px] text-[#999]">{populated.length} field{populated.length !== 1 ? 's' : ''}</span>
+          </button>
+          {isOpen && (
+            <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 border-t border-border">
+              {populated.map(([key, label]) => (
+                <div key={key} className="min-w-0">
+                  <p className="text-[10px] text-[#999] uppercase tracking-wider font-medium truncate">{label}</p>
+                  <p className="text-xs text-[#333] mt-0.5 break-words">{fmtPropertyValue(key, detail[key])}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )
+    })
+  }
+
+  const secondaryHasData = SECONDARY_SECTIONS.some(({ fields }) =>
+    fields.some(([key]) => detail[key] != null && detail[key] !== '')
+  )
+
   return (
     <div className="space-y-3 mb-6">
-      {PROPERTY_SECTIONS.map(({ title, fields }) => {
-        const populated = fields.filter(([key]) => detail[key] != null && detail[key] !== '')
-        if (populated.length === 0) return null
-        const isOpen = openSections.has(title)
+      {renderSections(PRIMARY_SECTIONS)}
 
-        return (
-          <Card key={title} className="overflow-hidden">
-            <button
-              onClick={() => toggleSection(title)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-surface hover:bg-border/30 transition-colors text-left"
-            >
-              <div className="flex items-center gap-2">
-                <svg
-                  className={`w-3.5 h-3.5 text-[#777] transition-transform ${isOpen ? 'rotate-90' : ''}`}
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span className="text-sm font-semibold text-primary">{title}</span>
-              </div>
-              <span className="text-[10px] text-[#999]">{populated.length} field{populated.length !== 1 ? 's' : ''}</span>
-            </button>
-            {isOpen && (
-              <div className="px-4 py-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-3 border-t border-border">
-                {populated.map(([key, label]) => (
-                  <div key={key} className="min-w-0">
-                    <p className="text-[10px] text-[#999] uppercase tracking-wider font-medium truncate">{label}</p>
-                    <p className="text-xs text-[#333] mt-0.5 break-words">{detail[key]}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        )
-      })}
+      {secondaryHasData && (
+        <>
+          <button
+            onClick={() => setShowMore((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-[#777] hover:text-primary transition-colors py-1"
+          >
+            <svg className={`w-3.5 h-3.5 transition-transform ${showMore ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            {showMore ? 'Show Less' : 'Show More Details'}
+          </button>
+          {showMore && renderSections(SECONDARY_SECTIONS)}
+        </>
+      )}
     </div>
   )
 }
@@ -490,6 +656,12 @@ export default function RentComparablesPage() {
     : 'map'
 
   function setView(v) {
+    // Reset edit mode when switching views
+    setEditMode(false)
+    setEditModeValues({})
+    setSelectedUnits(new Set())
+    setBatchField('')
+    setBatchValue('')
     if (v === 'map') navigate(BASE)
     else navigate(`${BASE}/${v}`)
   }
@@ -507,6 +679,27 @@ export default function RentComparablesPage() {
   const [editingId, setEditingId] = useState(null)
   const [editingValues, setEditingValues] = useState({})
   const [savingEdit, setSavingEdit] = useState(false)
+  // Edit mode: all cells editable at once, auto-save on blur
+  const [editMode, setEditMode] = useState(false)
+  const [editModeValues, setEditModeValues] = useState({}) // { [unitId]: { field: value, ... } }
+  const [savingUnits, setSavingUnits] = useState(new Set()) // unit IDs currently saving
+  // Batch editing
+  const [selectedUnits, setSelectedUnits] = useState(new Set())
+  const [batchField, setBatchField] = useState('')
+  const [batchValue, setBatchValue] = useState('')
+  const [applyingBatch, setApplyingBatch] = useState(false)
+  // Per-property upload
+  const [propertyUploading, setPropertyUploading] = useState(false)
+  const [propertyUploadResult, setPropertyUploadResult] = useState(null) // { success, message }
+  // Market research
+  const [researching, setResearching] = useState(false)
+  // Unit enrichment
+  const [enriching, setEnriching] = useState(false)
+  const [enrichResult, setEnrichResult] = useState(null)
+  // Auto-suggest comp scores: { [address]: { totalScore, breakdown, rank } }
+  const [compScores, setCompScores] = useState({})
+  const [suggestingComps, setSuggestingComps] = useState(false)
+  const [subjectProfile, setSubjectProfile] = useState(null) // cached subject profile for display
   const [historyView, setHistoryView] = useState('list')
   // The slug from the URL — used to resolve selectedProperty once history loads
   const propertySlug = view === 'property'
@@ -573,6 +766,23 @@ export default function RentComparablesPage() {
     () => groupFilesByAddress(uploadFiles),
     [uploadFiles],
   )
+
+  // Duplicate detection: { [address]: { duplicates: [...], dismissed: bool } }
+  const [uploadDuplicates, setUploadDuplicates] = useState({})
+
+  useEffect(() => {
+    if (uploadGroups.length === 0) { setUploadDuplicates({}); return }
+    for (const g of uploadGroups) {
+      if (g.address in uploadDuplicates) continue
+      checkDuplicateAddress(g.address)
+        .then(({ duplicates }) => {
+          if (duplicates.length > 0) {
+            setUploadDuplicates((prev) => ({ ...prev, [g.address]: { duplicates, dismissed: false } }))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [uploadGroups])
 
   const handleAddFiles = useCallback((accepted) => {
     setUploadFiles((prev) => {
@@ -738,6 +948,153 @@ export default function RentComparablesPage() {
   function clearSubject() {
     setPinStarCoords(null)
     setSubjectLabel(null)
+    setCompScores({})
+    setSubjectProfile(null)
+  }
+
+  // Auto-suggest best comparables based on similarity scoring
+  // geocodedMap: { [address]: { lat, lng } } from ComparablesMap
+  async function autoSuggestComps(subjectCoords, geocodedMap) {
+    if (!subjectCoords || history.length === 0) return
+
+    setSuggestingComps(true)
+    setError(null)
+
+    try {
+      // Group units by property
+      const propMap = new Map()
+      for (const unit of history) {
+        if (!unit.property_address) continue
+        if (!propMap.has(unit.property_address)) propMap.set(unit.property_address, [])
+        propMap.get(unit.property_address).push(unit)
+      }
+
+      // Find the closest DB property to the pin
+      let subjectAddress = null
+      let minDist = Infinity
+      for (const [address] of propMap) {
+        const coords = geocodedMap?.[address]
+        if (!coords) continue
+        const d = distanceMiles(subjectCoords.lat, subjectCoords.lng, coords.lat, coords.lng)
+        if (d < minDist) { minDist = d; subjectAddress = address }
+      }
+
+      // Build subject profile
+      let profile
+      if (subjectAddress && minDist < 0.3) {
+        // Subject is in our DB — use its actual data
+        profile = buildPropertyProfile(propMap.get(subjectAddress))
+        profile.source = 'database'
+        profile.address = subjectAddress
+      } else {
+        // Subject NOT in our DB — research it via Claude
+        const searchAddress = subjectLabel || 'Unknown address'
+        try {
+          const research = await researchSubjectProperty(searchAddress)
+          // Sanity check AI response — reject clearly wrong values
+          const numUnits = research.num_units != null && research.num_units > 0 && research.num_units < 2000 ? research.num_units : null
+          const yearBuilt = research.year_built != null && research.year_built > 1800 && research.year_built <= new Date().getFullYear() ? research.year_built : null
+          profile = {
+            unitCount: numUnits ?? 0,
+            storeys: research.num_storeys ?? null,
+            yearBuilt: yearBuilt,
+            propertyType: research.property_type ?? null,
+            constructionFrame: research.construction_frame ?? null,
+            summary: research.summary ?? null,
+            source: 'web_research',
+            address: searchAddress,
+          }
+        } catch {
+          // Fallback: empty profile for manual entry
+          profile = {
+            unitCount: 0,
+            storeys: null,
+            yearBuilt: null,
+            propertyType: null,
+            constructionFrame: null,
+            summary: null,
+            source: 'manual',
+            address: searchAddress,
+          }
+        }
+      }
+
+      setSubjectProfile(profile)
+
+      // Phase 1: Numeric pre-filter — score all candidates, keep top 10
+      const scored = []
+      for (const [address, units] of propMap) {
+        if (address === subjectAddress) continue
+        const coords = geocodedMap?.[address]
+        if (!coords) continue
+        const dist = distanceMiles(subjectCoords.lat, subjectCoords.lng, coords.lat, coords.lng)
+        if (dist > 15) continue
+        const candidate = buildPropertyProfile(units)
+        const { totalScore, breakdown } = scoreComparable(profile, candidate, dist)
+        // Compute avg rent and sqft for AI context
+        const ratedUnits = units.filter((u) => u.lease_rate != null)
+        const sqftUnits = units.filter((u) => u.sqft != null)
+        const avgRent = ratedUnits.length > 0 ? Math.round(ratedUnits.reduce((s, u) => s + Number(u.lease_rate), 0) / ratedUnits.length) : null
+        const avgSqft = sqftUnits.length > 0 ? Math.round(sqftUnits.reduce((s, u) => s + Number(u.sqft), 0) / sqftUnits.length) : null
+        scored.push({ address, totalScore, breakdown, dist, ...candidate, avgRent, avgSqft })
+      }
+
+      scored.sort((a, b) => a.totalScore - b.totalScore)
+      const shortlist = scored.slice(0, 10)
+
+      // Phase 2: AI reasoning — Claude picks the best 5 from the 10 with explanations
+      let aiPicks = null
+      try {
+        const candidatesForAI = shortlist.map((s) => ({
+          address: s.address,
+          unitCount: s.unitCount,
+          storeys: s.storeys,
+          yearBuilt: s.yearBuilt,
+          propertyType: s.propertyType,
+          constructionFrame: s.constructionFrame,
+          avgRent: s.avgRent,
+          avgSqft: s.avgSqft,
+          distance: Math.round(s.dist * 10) / 10,
+        }))
+        const result = await aiRankComps(profile, candidatesForAI)
+        aiPicks = result.picks
+      } catch (aiErr) {
+        console.warn('AI ranking failed, falling back to numeric scoring:', aiErr.message)
+      }
+
+      // Build final selection
+      const scoreMap = {}
+      if (aiPicks?.length > 0) {
+        // Use AI picks — map back to scored data for breakdown
+        aiPicks.forEach((pick) => {
+          const match = shortlist.find((s) => s.address === pick.address)
+          if (!match) return
+          scoreMap[pick.address] = {
+            totalScore: match.totalScore,
+            breakdown: match.breakdown,
+            rank: pick.rank,
+            dist: match.dist,
+            aiReason: pick.reason,
+            aiCaveat: pick.caveat,
+            aiQuality: pick.match_quality,
+          }
+        })
+        setCompScores(scoreMap)
+        setSelectedAddresses(new Set(aiPicks.map((p) => p.address)))
+      } else {
+        // Fallback: use numeric top 5
+        const top = shortlist.slice(0, 5)
+        top.forEach((s, i) => {
+          scoreMap[s.address] = { totalScore: s.totalScore, breakdown: s.breakdown, rank: i + 1, dist: s.dist }
+        })
+        setCompScores(scoreMap)
+        setSelectedAddresses(new Set(top.map((s) => s.address)))
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSuggestingComps(false)
+    }
   }
 
   function handleEditStart(unit) {
@@ -750,7 +1107,7 @@ export default function RentComparablesPage() {
       sqft: unit.sqft ?? '',
       lease_rate: unit.lease_rate ?? '',
       move_in: unit.move_in ?? '',
-      move_out: unit.move_out ?? '',
+      notes: unit.notes ?? '',
     })
   }
 
@@ -771,7 +1128,7 @@ export default function RentComparablesPage() {
         sqft: editingValues.sqft === '' ? null : Number(editingValues.sqft),
         lease_rate: editingValues.lease_rate === '' ? null : Number(editingValues.lease_rate),
         move_in: editingValues.move_in || null,
-        move_out: editingValues.move_out || null,
+        notes: editingValues.notes || null,
       }
       const updated = await updateUnit(editingId, fields)
       setHistory((prev) => prev.map((u) => (u.id === editingId ? { ...u, ...updated } : u)))
@@ -781,6 +1138,182 @@ export default function RentComparablesPage() {
       setError(err.message)
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  // ── Edit Mode helpers ──────────────────────────────────────────────────────
+  function toggleEditMode() {
+    if (editMode) {
+      // Exiting edit mode — clear state
+      setEditModeValues({})
+      setSelectedUnits(new Set())
+      setBatchField('')
+      setBatchValue('')
+    }
+    setEditMode((prev) => !prev)
+    // Also clear single-row editing
+    setEditingId(null)
+    setEditingValues({})
+  }
+
+  function getEditValue(unit, field) {
+    return editModeValues[unit.id]?.[field] ?? unit[field] ?? ''
+  }
+
+  function setEditField(unitId, field, value) {
+    setEditModeValues((prev) => ({
+      ...prev,
+      [unitId]: { ...prev[unitId], [field]: value },
+    }))
+  }
+
+  async function handleCellBlur(unit, field) {
+    const changed = editModeValues[unit.id]
+    if (!changed || !(field in changed)) return
+    const newVal = changed[field]
+    const oldVal = unit[field] ?? ''
+    if (String(newVal) === String(oldVal)) return
+
+    const fields = {}
+    if (['beds', 'baths'].includes(field)) fields[field] = newVal === '' ? null : String(newVal)
+    else if (['sqft', 'lease_rate'].includes(field)) fields[field] = newVal === '' ? null : Number(newVal)
+    else fields[field] = newVal || null
+
+    setSavingUnits((prev) => new Set(prev).add(unit.id))
+    try {
+      const updated = await updateUnit(unit.id, fields)
+      setHistory((prev) => prev.map((u) => (u.id === unit.id ? { ...u, ...updated } : u)))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingUnits((prev) => { const s = new Set(prev); s.delete(unit.id); return s })
+    }
+  }
+
+  function toggleUnitSelection(unitId) {
+    setSelectedUnits((prev) => {
+      const next = new Set(prev)
+      if (next.has(unitId)) next.delete(unitId)
+      else next.add(unitId)
+      return next
+    })
+  }
+
+  function toggleSelectAll(unitIds) {
+    setSelectedUnits((prev) => {
+      const allSelected = unitIds.every((id) => prev.has(id))
+      if (allSelected) return new Set()
+      return new Set(unitIds)
+    })
+  }
+
+  async function handleDeleteSelectedUnits() {
+    const ids = [...selectedUnits]
+    if (ids.length === 0) return
+    if (!confirm(`Delete ${ids.length} unit${ids.length !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    setError(null)
+    try {
+      await deleteUnits(ids)
+      setHistory((prev) => prev.filter((u) => !selectedUnits.has(u.id)))
+      setSelectedUnits(new Set())
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleBatchApply(unitIds) {
+    if (!batchField || batchValue === '') return
+    setApplyingBatch(true)
+    setError(null)
+    try {
+      const ids = unitIds.filter((id) => selectedUnits.has(id))
+      for (const id of ids) {
+        const fields = {}
+        if (['beds', 'baths'].includes(batchField)) fields[batchField] = batchValue === '' ? null : String(batchValue)
+        else if (['sqft', 'lease_rate'].includes(batchField)) fields[batchField] = batchValue === '' ? null : Number(batchValue)
+        else if (batchField === 'move_in') fields[batchField] = batchValue || null
+        else fields[batchField] = batchValue || null
+        const updated = await updateUnit(id, fields)
+        setHistory((prev) => prev.map((u) => (u.id === id ? { ...u, ...updated } : u)))
+      }
+      setSelectedUnits(new Set())
+      setBatchField('')
+      setBatchValue('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setApplyingBatch(false)
+    }
+  }
+
+  const EDITABLE_FIELDS = [
+    { key: 'unit_number', label: 'Unit' },
+    { key: 'unit_type', label: 'Type' },
+    { key: 'beds', label: 'Beds', type: 'number' },
+    { key: 'baths', label: 'Baths', type: 'number' },
+    { key: 'sqft', label: 'Sqft', type: 'number' },
+    { key: 'lease_rate', label: 'Rent/mo', type: 'number' },
+    { key: 'move_in', label: 'Move In', type: 'date' },
+    { key: 'notes', label: 'Notes' },
+  ]
+
+  async function handleEnrichUnits(propertyId) {
+    setEnriching(true)
+    setEnrichResult(null)
+    setError(null)
+    try {
+      const result = await enrichUnits(propertyId)
+      // Update history with enriched unit data
+      if (result.units?.length) {
+        setHistory((prev) => {
+          const enrichedMap = new Map(result.units.map((u) => [u.id, u]))
+          return prev.map((u) => enrichedMap.has(u.id) ? { ...u, ...enrichedMap.get(u.id) } : u)
+        })
+      }
+      setEnrichResult(result)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setEnriching(false)
+    }
+  }
+
+  async function handleResearch(propertyId) {
+    setResearching(true)
+    setError(null)
+    try {
+      const result = await researchMarketData(propertyId)
+      // Update propertyDetail with the new fields
+      setPropertyDetail((prev) => prev ? {
+        ...prev,
+        building_amenities: result.building_amenities,
+        utility_responsibility: result.utility_responsibility,
+        market_incentives: result.market_incentives,
+        market_research_at: new Date().toISOString(),
+      } : prev)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setResearching(false)
+    }
+  }
+
+  async function handlePropertyUpload(address, docType, files) {
+    setPropertyUploading(true)
+    setPropertyUploadResult(null)
+    setError(null)
+    try {
+      const results = await uploadFilesToS3(address, docType, Array.from(files))
+      const succeeded = results.filter((r) => r.success).length
+      const failed = results.filter((r) => !r.success).length
+      setPropertyUploadResult({
+        success: failed === 0,
+        message: `${succeeded} file${succeeded !== 1 ? 's' : ''} uploaded${failed > 0 ? `, ${failed} failed` : ''}. Data extraction will run automatically in the background.`,
+      })
+    } catch (err) {
+      setPropertyUploadResult({ success: false, message: err.message })
+    } finally {
+      setPropertyUploading(false)
     }
   }
 
@@ -829,6 +1362,8 @@ export default function RentComparablesPage() {
   useEffect(() => {
     if (view === 'property' && selectedPropertyId) {
       setLoadingDetail(true)
+      setPropertyUploadResult(null)
+      setEnrichResult(null)
       fetchPropertyDetail(selectedPropertyId)
         .then((data) => {
           setPropertyDetail(data.property ?? null)
@@ -1018,9 +1553,41 @@ export default function RentComparablesPage() {
                       return next
                     })
                   }}
-                  onClearSelected={() => setSelectedAddresses(new Set())}
+                  onClearSelected={() => { setSelectedAddresses(new Set()); setCompScores({}); setSubjectProfile(null) }}
                   onOpenCompTable={() => setView('comptable')}
                   onSelectProperty={handleSelectProperty}
+                  onAutoSuggest={(geocodedMap) => autoSuggestComps(pinStarCoords, geocodedMap)}
+                  suggestingComps={suggestingComps}
+                  compScores={compScores}
+                  subjectProfile={subjectProfile}
+                  onSubjectProfileChange={setSubjectProfile}
+                  onRescore={(geocodedMap) => {
+                    if (!subjectProfile || !pinStarCoords) return
+                    // Re-run scoring with updated subject profile (no API call needed)
+                    const propMap = new Map()
+                    for (const unit of history) {
+                      if (!unit.property_address) continue
+                      if (!propMap.has(unit.property_address)) propMap.set(unit.property_address, [])
+                      propMap.get(unit.property_address).push(unit)
+                    }
+                    const scored = []
+                    for (const [address, units] of propMap) {
+                      if (address === subjectProfile.address) continue
+                      const coords = geocodedMap?.[address]
+                      if (!coords) continue
+                      const dist = distanceMiles(pinStarCoords.lat, pinStarCoords.lng, coords.lat, coords.lng)
+                      if (dist > 15) continue
+                      const candidate = buildPropertyProfile(units)
+                      const { totalScore, breakdown } = scoreComparable(subjectProfile, candidate, dist)
+                      scored.push({ address, totalScore, breakdown, dist })
+                    }
+                    scored.sort((a, b) => a.totalScore - b.totalScore)
+                    const top = scored.slice(0, 8)
+                    const scoreMap = {}
+                    top.forEach((s, i) => { scoreMap[s.address] = { totalScore: s.totalScore, breakdown: s.breakdown, rank: i + 1, dist: s.dist } })
+                    setCompScores(scoreMap)
+                    setSelectedAddresses(new Set(top.map((s) => s.address)))
+                  }}
                 />
               </Suspense>
             )}
@@ -1044,6 +1611,8 @@ export default function RentComparablesPage() {
               units={history}
               onSelectProperty={handleSelectProperty}
               pinStarCoords={pinStarCoords}
+              subjectProfile={subjectProfile}
+              compScores={compScores}
             />
           </Suspense>
         </div>
@@ -1170,7 +1739,7 @@ export default function RentComparablesPage() {
 
                     <div className="space-y-3">
                       {uploadGroups.map((g) => (
-                        <div key={g.address} className="rounded-lg border border-border overflow-hidden">
+                        <div key={g.address} className={`rounded-lg border overflow-hidden ${uploadDuplicates[g.address]?.duplicates?.length > 0 && !uploadDuplicates[g.address]?.dismissed ? 'border-amber-300' : 'border-border'}`}>
                           <div className="px-4 py-2.5 bg-surface flex items-center gap-2">
                             <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -1178,6 +1747,25 @@ export default function RentComparablesPage() {
                             </svg>
                             <span className="text-xs font-semibold text-primary truncate">{g.address}</span>
                           </div>
+                          {/* Duplicate warning */}
+                          {uploadDuplicates[g.address]?.duplicates?.length > 0 && !uploadDuplicates[g.address]?.dismissed && (
+                            <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-start gap-2">
+                              <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                              <div className="flex-1">
+                                <p className="text-[11px] font-semibold text-amber-800">Possible duplicate</p>
+                                <p className="text-[10px] text-amber-700 mt-0.5">
+                                  Similar to existing: {uploadDuplicates[g.address].duplicates.map((d) => d.address).join(', ')}
+                                </p>
+                                <p className="text-[10px] text-amber-600 mt-0.5">Uploading will merge new data into the existing property.</p>
+                              </div>
+                              <button
+                                onClick={() => setUploadDuplicates((prev) => ({ ...prev, [g.address]: { ...prev[g.address], dismissed: true } }))}
+                                className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex-shrink-0"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          )}
                           <div className="px-4 py-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[#555]">
                             {g.appraisal.length > 0 && (
                               <span className="flex items-center gap-1">
@@ -1269,6 +1857,17 @@ export default function RentComparablesPage() {
                     </button>
                   ))}
                 </div>
+                {historyView === 'list' && (
+                  <button
+                    onClick={toggleEditMode}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded transition-colors ${editMode ? 'bg-primary text-white' : 'border border-border text-[#555555] hover:bg-surface'}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    {editMode ? 'Done Editing' : 'Edit Mode'}
+                  </button>
+                )}
                 <Button variant="primary" size="sm" onClick={() => setView('upload')}>
                   + Upload New
                 </Button>
@@ -1473,16 +2072,51 @@ export default function RentComparablesPage() {
                     </div>
 
                     {isExpanded && <div className="overflow-x-auto">
+                      {/* Batch edit bar for this property in list view */}
+                      {editMode && selectedUnits.size > 0 && prop.units.some((u) => selectedUnits.has(u.id)) && (
+                        <div className="flex items-center gap-3 bg-blue-50 border-b border-blue-200 px-4 py-2">
+                          <span className="text-xs font-medium text-blue-700">{prop.units.filter((u) => selectedUnits.has(u.id)).length} selected</span>
+                          <select value={batchField} onChange={(e) => { setBatchField(e.target.value); setBatchValue('') }} className="text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary">
+                            <option value="">Set field…</option>
+                            {EDITABLE_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                          </select>
+                          {batchField && <input type={EDITABLE_FIELDS.find((f) => f.key === batchField)?.type || 'text'} value={batchValue} onChange={(e) => setBatchValue(e.target.value)} placeholder={`New ${EDITABLE_FIELDS.find((f) => f.key === batchField)?.label ?? ''}`} className="text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary w-28" />}
+                          <button onClick={() => handleBatchApply(prop.units.map((u) => u.id))} disabled={!batchField || batchValue === '' || applyingBatch} className="text-xs px-2.5 py-1 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-40">{applyingBatch ? '…' : 'Apply'}</button>
+                          <div className="h-4 w-px bg-blue-200 ml-1" />
+                          <button onClick={handleDeleteSelectedUnits} className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 transition-colors">Delete</button>
+                        </div>
+                      )}
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-border">
-                            {['Unit', 'Type', 'Beds', 'Baths', 'Sqft', 'Rent/mo', 'Move In', 'Move Out', ''].map((col) => (
+                            {editMode && (
+                              <th className="px-3 py-2.5 w-8">
+                                <input type="checkbox" checked={prop.units.every((u) => selectedUnits.has(u.id))} onChange={() => toggleSelectAll(prop.units.map((u) => u.id))} className="rounded border-border" />
+                              </th>
+                            )}
+                            {['Unit', 'Type', 'Beds', 'Baths', 'Sqft', 'Rent/mo', '$/Sqft', 'Move In', ...(editMode ? [] : [''])].map((col) => (
                               <th key={col} className="text-left px-4 py-2.5 text-xs font-semibold text-[#777777] uppercase tracking-wider whitespace-nowrap">{col}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {prop.units.map((unit) => {
+                            const isSaving = savingUnits.has(unit.id)
+                            if (editMode) {
+                              return (
+                                <tr key={unit.id} className={`border-b border-border last:border-0 ${selectedUnits.has(unit.id) ? 'bg-blue-50' : ''}`}>
+                                  <td className="px-3 py-2 w-8"><input type="checkbox" checked={selectedUnits.has(unit.id)} onChange={() => toggleUnitSelection(unit.id)} className="rounded border-border" /></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'unit_number')} onChange={(v) => setEditField(unit.id, 'unit_number', v)} onBlur={() => handleCellBlur(unit, 'unit_number')} width="w-14" saving={isSaving} /></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'unit_type')} onChange={(v) => setEditField(unit.id, 'unit_type', v)} onBlur={() => handleCellBlur(unit, 'unit_type')} width="w-24" saving={isSaving} /></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'beds')} onChange={(v) => setEditField(unit.id, 'beds', v)} onBlur={() => handleCellBlur(unit, 'beds')} type="number" width="w-14" saving={isSaving} /></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'baths')} onChange={(v) => setEditField(unit.id, 'baths', v)} onBlur={() => handleCellBlur(unit, 'baths')} type="number" width="w-14" saving={isSaving} /></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'sqft')} onChange={(v) => setEditField(unit.id, 'sqft', v)} onBlur={() => handleCellBlur(unit, 'sqft')} type="number" width="w-16" saving={isSaving} /></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'lease_rate')} onChange={(v) => setEditField(unit.id, 'lease_rate', v)} onBlur={() => handleCellBlur(unit, 'lease_rate')} type="number" width="w-20" saving={isSaving} /></td>
+                                  <td className="px-2 py-1.5"><span className="text-xs text-[#999] whitespace-nowrap">{fmtPsf(editModeValues[unit.id]?.lease_rate ?? unit.lease_rate, editModeValues[unit.id]?.sqft ?? unit.sqft)}</span></td>
+                                  <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'move_in')} onChange={(v) => setEditField(unit.id, 'move_in', v)} onBlur={() => handleCellBlur(unit, 'move_in')} type="date" width="w-32" saving={isSaving} /></td>
+                                </tr>
+                              )
+                            }
                             const isEditing = editingId === unit.id
                             const ev = editingValues
                             return (
@@ -1493,8 +2127,8 @@ export default function RentComparablesPage() {
                                 <td className="px-2 py-2">{isEditing ? <input type="number" className="w-12 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.baths} onChange={(e) => setEditingValues((v) => ({ ...v, baths: e.target.value }))} /> : <span className="px-2 text-xs text-[#555555]">{unit.baths ?? '—'}</span>}</td>
                                 <td className="px-2 py-2">{isEditing ? <input type="number" className="w-16 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.sqft} onChange={(e) => setEditingValues((v) => ({ ...v, sqft: e.target.value }))} /> : <span className="px-2 text-xs text-[#555555]">{unit.sqft ?? '—'}</span>}</td>
                                 <td className="px-2 py-2">{isEditing ? <input type="number" className="w-20 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.lease_rate} onChange={(e) => setEditingValues((v) => ({ ...v, lease_rate: e.target.value }))} /> : <span className="px-2 text-xs font-semibold text-primary whitespace-nowrap">{fmtCurrency(unit.lease_rate)}</span>}</td>
+                                <td className="px-2 py-2"><span className="px-2 text-xs text-[#999] whitespace-nowrap">{fmtPsf(unit.lease_rate, unit.sqft)}</span></td>
                                 <td className="px-2 py-2">{isEditing ? <input type="date" className="w-32 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.move_in} onChange={(e) => setEditingValues((v) => ({ ...v, move_in: e.target.value }))} /> : <span className="px-2 text-xs text-[#555555] whitespace-nowrap">{fmtDate(unit.move_in) ?? '—'}</span>}</td>
-                                <td className="px-2 py-2">{isEditing ? <input type="date" className="w-32 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.move_out} onChange={(e) => setEditingValues((v) => ({ ...v, move_out: e.target.value }))} /> : <span className="px-2 whitespace-nowrap"><LeaseEndCell move_out={unit.move_out} /></span>}</td>
                                 <td className="px-3 py-2 whitespace-nowrap">
                                   {isEditing ? (
                                     <div className="flex items-center gap-2">
@@ -1536,10 +2170,85 @@ export default function RentComparablesPage() {
 
           return (
             <div className="max-w-7xl mx-auto">
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-primary tracking-tight">{selectedProperty}</h2>
-                <p className="text-[#777777] mt-0.5 text-sm">{propertyUnits.length} unit{propertyUnits.length !== 1 ? 's' : ''}</p>
+              <div className="mb-6 flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-primary tracking-tight">{selectedProperty}</h2>
+                  <p className="text-[#777777] mt-0.5 text-sm">{propertyUnits.length} unit{propertyUnits.length !== 1 ? 's' : ''}</p>
+                </div>
+                {selectedPropertyId && (
+                  <button
+                    onClick={() => {
+                      if (!confirm('Delete this property and all its units? This cannot be undone.')) return
+                      handleDeleteProperty(selectedPropertyId).then(() => {
+                        setView('map')
+                        setSelectedProperty(null)
+                        setSelectedPropertyId(null)
+                      })
+                    }}
+                    disabled={deletingProperty === selectedPropertyId}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    {deletingProperty === selectedPropertyId ? 'Deleting…' : 'Delete Property'}
+                  </button>
+                )}
               </div>
+
+              {/* Upload documents for this property */}
+              <Card className="mb-6 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-4 h-4 text-[#777]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-primary">Upload Documents</p>
+                      <p className="text-xs text-[#999] mt-0.5">Upload an appraisal or rent roll to enrich this property's data</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer ${propertyUploading ? 'opacity-40 pointer-events-none' : ''}`}>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 0h0m6 0h0M9 12V9m0 3v3m3-6V6m0 3V6m0 3h3m-3 0H9" />
+                      </svg>
+                      Appraisal
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { if (e.target.files.length) handlePropertyUpload(selectedProperty, 'appraisal', e.target.files); e.target.value = '' }}
+                      />
+                    </label>
+                    <label className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer ${propertyUploading ? 'opacity-40 pointer-events-none' : ''}`}>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 0h0m6 0h0M9 12V9m0 3v3m3-6V6m0 3V6m0 3h3m-3 0H9" />
+                      </svg>
+                      Rent Roll
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { if (e.target.files.length) handlePropertyUpload(selectedProperty, 'rentroll', e.target.files); e.target.value = '' }}
+                      />
+                    </label>
+                  </div>
+                </div>
+                {propertyUploading && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-primary">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    Uploading…
+                  </div>
+                )}
+                {propertyUploadResult && (
+                  <div className={`mt-3 text-xs px-3 py-2 rounded ${propertyUploadResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                    {propertyUploadResult.message}
+                  </div>
+                )}
+              </Card>
 
               <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
@@ -1554,6 +2263,74 @@ export default function RentComparablesPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Market Research */}
+              {propertyDetail?.market_research_at ? (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-primary flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      Market Research
+                    </h3>
+                    <button
+                      onClick={() => handleResearch(selectedPropertyId)}
+                      disabled={researching}
+                      className="flex items-center gap-1 text-[10px] text-[#999] hover:text-primary transition-colors disabled:opacity-40"
+                      title="Re-run market research"
+                    >
+                      <svg className={`w-3 h-3 ${researching ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {researching ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { label: 'Building Amenities', value: propertyDetail.building_amenities, icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+                      { label: 'Utility Responsibility', value: propertyDetail.utility_responsibility, icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+                      { label: 'Market Incentives', value: propertyDetail.market_incentives, icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+                    ].map(({ label, value, icon }) => (
+                      <Card key={label} className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
+                          </svg>
+                          <p className="text-xs font-semibold text-primary uppercase tracking-wider">{label}</p>
+                        </div>
+                        <p className="text-xs text-[#555] leading-relaxed">{value || '—'}</p>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : selectedPropertyId && (
+                <Card className="mb-6 p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-primary">Market Research</p>
+                    <p className="text-xs text-[#999] mt-0.5">Search the web for building amenities, utility responsibility, and market incentives</p>
+                  </div>
+                  <button
+                    onClick={() => handleResearch(selectedPropertyId)}
+                    disabled={researching}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border text-[#555] hover:bg-surface transition-colors disabled:opacity-40"
+                  >
+                    {researching ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        Researching…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Research Market Data
+                      </>
+                    )}
+                  </button>
+                </Card>
+              )}
 
               {bedGroups.length > 0 && (
                 <div className="flex gap-3 mb-6 flex-wrap">
@@ -1621,24 +2398,142 @@ export default function RentComparablesPage() {
               )}
 
               {/* Units */}
-              <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                </svg>
-                Units ({propertyUnits.length})
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-primary flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  Units ({propertyUnits.length})
+                </h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleEditMode}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded transition-colors ${editMode ? 'bg-primary text-white' : 'border border-border text-[#555555] hover:bg-surface'}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    {editMode ? 'Done Editing' : 'Edit Mode'}
+                  </button>
+                  {selectedPropertyId && propertyUnits.some((u) => u.sqft == null || u.baths == null) && (
+                    <button
+                      onClick={() => handleEnrichUnits(selectedPropertyId)}
+                      disabled={enriching}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40"
+                    >
+                      {enriching ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                          Enriching…
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Fill Missing Data
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {enrichResult && (
+                <div className={`mb-3 text-xs px-3 py-2 rounded ${enrichResult.enriched > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-50 text-[#777] border border-border'}`}>
+                  {enrichResult.enriched > 0
+                    ? `Filled ${enrichResult.enriched} unit${enrichResult.enriched !== 1 ? 's' : ''} (${enrichResult.fromAppraisal} from appraisal, ${enrichResult.fromWeb} from web search)`
+                    : enrichResult.message || 'No missing data to fill.'
+                  }
+                </div>
+              )}
+
+              {/* Batch edit bar */}
+              {editMode && selectedUnits.size > 0 && (
+                <div className="mb-3 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded px-4 py-2.5">
+                  <span className="text-xs font-medium text-blue-700">{selectedUnits.size} unit{selectedUnits.size !== 1 ? 's' : ''} selected</span>
+                  <div className="h-4 w-px bg-blue-200" />
+                  <select
+                    value={batchField}
+                    onChange={(e) => { setBatchField(e.target.value); setBatchValue('') }}
+                    className="text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Set field…</option>
+                    {EDITABLE_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                  </select>
+                  {batchField && (
+                    <input
+                      type={EDITABLE_FIELDS.find((f) => f.key === batchField)?.type || 'text'}
+                      value={batchValue}
+                      onChange={(e) => setBatchValue(e.target.value)}
+                      placeholder={`New ${EDITABLE_FIELDS.find((f) => f.key === batchField)?.label ?? ''}`}
+                      className="text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary w-32"
+                    />
+                  )}
+                  <button
+                    onClick={() => handleBatchApply(propertyUnits.map((u) => u.id))}
+                    disabled={!batchField || batchValue === '' || applyingBatch}
+                    className="text-xs px-3 py-1 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-40"
+                  >
+                    {applyingBatch ? 'Applying…' : 'Apply'}
+                  </button>
+                  <div className="h-4 w-px bg-blue-200 ml-1" />
+                  <button
+                    onClick={handleDeleteSelectedUnits}
+                    className="text-xs px-3 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => { setSelectedUnits(new Set()); setBatchField(''); setBatchValue('') }}
+                    className="text-xs text-[#777] hover:text-primary ml-auto"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border bg-surface">
-                        {['Unit', 'Type', 'Beds', 'Baths', 'Sqft', 'Rent/mo', 'Move In', 'Move Out', 'Source', ''].map((col) => (
+                        {editMode && (
+                          <th className="px-3 py-2.5 w-8">
+                            <input
+                              type="checkbox"
+                              checked={propertyUnits.length > 0 && propertyUnits.every((u) => selectedUnits.has(u.id))}
+                              onChange={() => toggleSelectAll(propertyUnits.map((u) => u.id))}
+                              className="rounded border-border"
+                            />
+                          </th>
+                        )}
+                        {['Unit', 'Type', 'Beds', 'Baths', 'Sqft', 'Rent/mo', '$/Sqft', 'Move In', 'Notes', 'Source', ...(editMode ? [] : [''])].map((col) => (
                           <th key={col} className="text-left px-4 py-2.5 text-xs font-semibold text-[#777777] uppercase tracking-wider whitespace-nowrap">{col}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {propertyUnits.map((unit) => {
+                        const isSaving = savingUnits.has(unit.id)
+                        if (editMode) {
+                          return (
+                            <tr key={unit.id} className={`border-b border-border last:border-0 ${selectedUnits.has(unit.id) ? 'bg-blue-50' : ''}`}>
+                              <td className="px-3 py-2 w-8">
+                                <input type="checkbox" checked={selectedUnits.has(unit.id)} onChange={() => toggleUnitSelection(unit.id)} className="rounded border-border" />
+                              </td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'unit_number')} onChange={(v) => setEditField(unit.id, 'unit_number', v)} onBlur={() => handleCellBlur(unit, 'unit_number')} width="w-14" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'unit_type')} onChange={(v) => setEditField(unit.id, 'unit_type', v)} onBlur={() => handleCellBlur(unit, 'unit_type')} width="w-24" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'beds')} onChange={(v) => setEditField(unit.id, 'beds', v)} onBlur={() => handleCellBlur(unit, 'beds')} type="number" width="w-14" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'baths')} onChange={(v) => setEditField(unit.id, 'baths', v)} onBlur={() => handleCellBlur(unit, 'baths')} type="number" width="w-14" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'sqft')} onChange={(v) => setEditField(unit.id, 'sqft', v)} onBlur={() => handleCellBlur(unit, 'sqft')} type="number" width="w-16" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'lease_rate')} onChange={(v) => setEditField(unit.id, 'lease_rate', v)} onBlur={() => handleCellBlur(unit, 'lease_rate')} type="number" width="w-20" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><span className="text-xs text-[#999] whitespace-nowrap">{fmtPsf(editModeValues[unit.id]?.lease_rate ?? unit.lease_rate, editModeValues[unit.id]?.sqft ?? unit.sqft)}</span></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'move_in')} onChange={(v) => setEditField(unit.id, 'move_in', v)} onBlur={() => handleCellBlur(unit, 'move_in')} type="date" width="w-32" saving={isSaving} /></td>
+                              <td className="px-2 py-1.5"><EditableCell value={getEditValue(unit, 'notes')} onChange={(v) => setEditField(unit.id, 'notes', v)} onBlur={() => handleCellBlur(unit, 'notes')} width="w-40" saving={isSaving} /></td>
+                              <td className="px-4 py-2 text-xs text-[#999] whitespace-nowrap max-w-[160px] truncate" title={unit.source_file}>{unit.source_file ?? '—'}</td>
+                            </tr>
+                          )
+                        }
                         const isEditing = editingId === unit.id
                         const ev = editingValues
                         return (
@@ -1649,8 +2544,9 @@ export default function RentComparablesPage() {
                             <td className="px-2 py-2">{isEditing ? <input type="number" className="w-12 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.baths} onChange={(e) => setEditingValues((v) => ({ ...v, baths: e.target.value }))} /> : <span className="px-2 text-xs text-[#555555]">{unit.baths ?? '—'}</span>}</td>
                             <td className="px-2 py-2">{isEditing ? <input type="number" className="w-16 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.sqft} onChange={(e) => setEditingValues((v) => ({ ...v, sqft: e.target.value }))} /> : <span className="px-2 text-xs text-[#555555]">{unit.sqft ?? '—'}</span>}</td>
                             <td className="px-2 py-2">{isEditing ? <input type="number" className="w-20 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.lease_rate} onChange={(e) => setEditingValues((v) => ({ ...v, lease_rate: e.target.value }))} /> : <span className="px-2 text-xs font-semibold text-primary whitespace-nowrap">{fmtCurrency(unit.lease_rate)}</span>}</td>
+                            <td className="px-2 py-2"><span className="px-2 text-xs text-[#999] whitespace-nowrap">{fmtPsf(unit.lease_rate, unit.sqft)}</span></td>
                             <td className="px-2 py-2">{isEditing ? <input type="date" className="w-32 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.move_in} onChange={(e) => setEditingValues((v) => ({ ...v, move_in: e.target.value }))} /> : <span className="px-2 text-xs text-[#555555] whitespace-nowrap">{unit.move_in ?? '—'}</span>}</td>
-                            <td className="px-2 py-2">{isEditing ? <input type="date" className="w-32 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.move_out} onChange={(e) => setEditingValues((v) => ({ ...v, move_out: e.target.value }))} /> : <span className="px-2 whitespace-nowrap"><LeaseEndCell move_out={unit.move_out} /></span>}</td>
+                            <td className="px-2 py-2">{isEditing ? <input className="w-40 text-xs px-2 py-1 border border-border rounded bg-white focus:outline-none focus:border-primary" value={ev.notes} onChange={(e) => setEditingValues((v) => ({ ...v, notes: e.target.value }))} placeholder="Add note…" /> : <span className="px-2 text-xs text-[#777] italic max-w-[160px] truncate block" title={unit.notes}>{unit.notes || '—'}</span>}</td>
                             <td className="px-4 py-2 text-xs text-[#999] whitespace-nowrap max-w-[160px] truncate" title={unit.source_file}>{unit.source_file ?? '—'}</td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               {isEditing ? (

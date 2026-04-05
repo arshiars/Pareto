@@ -170,7 +170,7 @@ const UNIT_FIELDS_SCHEMA = `{
 
 const SHARED_RULES = `
 Field rules:
-- For all text fields: use the exact text from the document, or null if not found
+- IMPORTANT: All text values MUST be in English. If the document is in French (or any other language), translate all extracted text to English. For example: "Bois" → "Wood", "Béton" → "Concrete", "Chauffe-eau au gaz" → "Gas water heater", "Bon état" → "Good condition"
 - For financial/numeric fields: plain numbers without $ or commas
 - Do not guess or fabricate data that is not present in the document
 - If a field is partially readable, extract the best reading

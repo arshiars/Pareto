@@ -247,7 +247,7 @@ function PropertyCard({ prop, searchCoords, onClick, isSelected, onToggleSelect 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ComparablesMap({ units, onSelectProperty, searchCoords, pinStarCoords, onPinStarChange, highlightAddress, selectedAddresses, onToggleSelect, onClearSelected, onOpenCompTable }) {
+export default function ComparablesMap({ units, onSelectProperty, searchCoords, pinStarCoords, onPinStarChange, highlightAddress, selectedAddresses, onToggleSelect, onClearSelected, onOpenCompTable, onAutoSuggest, suggestingComps, compScores, subjectProfile, onSubjectProfileChange, onRescore }) {
   const mapRef = useRef(null)
   const [viewState, setViewState] = useState({ longitude: -96, latitude: 56, zoom: 4 })
   const [geocoded, setGeocoded] = useState({})
@@ -743,7 +743,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
 
       {/* ── Radius overlays ──────────────────────────────────────────────────── */}
       {(searchCoords || pinStarCoords) && (
-        <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
+        <div className={`absolute top-3 z-10 flex flex-col gap-2 transition-all ${sidebarData ? 'left-[385px]' : 'left-3'}`}>
           {/* Search radius control */}
           {searchCoords && (
             <div className="bg-white border border-border rounded-lg shadow-md px-3 py-2.5 flex items-center gap-2">
@@ -801,6 +801,29 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
                 </svg>
               </button>
             </div>
+          )}
+
+          {/* Auto-suggest comps button */}
+          {pinStarCoords && onAutoSuggest && (
+            <button
+              onClick={() => onAutoSuggest(geocoded)}
+              disabled={suggestingComps}
+              className="flex items-center gap-1.5 bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-md transition-colors disabled:opacity-60"
+            >
+              {suggestingComps ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Analyzing…
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Auto-Suggest Comps
+                </>
+              )}
+            </button>
           )}
         </div>
       )}
@@ -1038,7 +1061,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
       {/* ── Selected properties panel ────────────────────────────────────── */}
       {selectedAddresses?.size > 0 && (
         <div
-          className="absolute bottom-4 right-4 z-10 w-[300px] bg-white rounded-2xl shadow-xl border border-border overflow-hidden"
+          className="absolute bottom-4 right-4 z-10 w-[340px] bg-white rounded-2xl shadow-xl border border-border"
           style={{ animation: 'trayIn .2s ease-out' }}
         >
           <style>{`@keyframes trayIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
@@ -1059,17 +1082,174 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
             </button>
           </div>
 
+          {/* Manual subject entry when no profile exists yet */}
+          {!subjectProfile && pinStarCoords && onSubjectProfileChange && (
+            <div className="mx-3 mb-2">
+              <button
+                onClick={() => onSubjectProfileChange({
+                  unitCount: 0, storeys: null, yearBuilt: null, propertyType: null,
+                  constructionFrame: null, summary: null, source: 'manual', address: 'Subject Property',
+                })}
+                className="w-full flex items-center justify-center gap-1.5 text-[10px] text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Enter Subject Property Details Manually
+              </button>
+            </div>
+          )}
+
+          {/* Subject property info — editable */}
+          {subjectProfile && (() => {
+            const sp = subjectProfile
+            const inputCls = 'bg-white/70 border border-amber-300 rounded px-1.5 py-0.5 text-[10px] text-amber-900 focus:outline-none focus:border-amber-500 w-full'
+            const labelCls = 'text-[9px] text-amber-600 uppercase tracking-wider font-semibold'
+
+            function update(field, value) {
+              if (!onSubjectProfileChange) return
+              if (field === 'unitCount' || field === 'storeys') {
+                onSubjectProfileChange({ ...sp, [field]: Number(value) || 0 })
+              } else {
+                onSubjectProfileChange({ ...sp, [field]: value || null })
+              }
+            }
+
+            return (
+            <div className="mx-3 mb-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3 h-3 text-amber-500" viewBox="0 0 24 24" fill="#f59e0b" stroke="#d97706" strokeWidth="1">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                  <span className="text-[10px] font-semibold text-amber-800 uppercase tracking-wider">Subject Property</span>
+                  {sp.source === 'web_research' && <span className="text-[9px] text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">AI</span>}
+                </div>
+                {onRescore && (
+                  <button
+                    onClick={() => onRescore(geocoded)}
+                    className="text-[9px] font-semibold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded transition-colors"
+                  >
+                    Re-score
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-amber-900 font-medium truncate mb-2">{sp.address}</p>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                <div>
+                  <label className={labelCls}>Year Built</label>
+                  <input className={inputCls} value={sp.yearBuilt ?? ''} onChange={(e) => update('yearBuilt', e.target.value)} placeholder="e.g. 1985" />
+                </div>
+                <div>
+                  <label className={labelCls}>Units</label>
+                  <input className={inputCls} type="number" value={sp.unitCount || ''} onChange={(e) => update('unitCount', e.target.value)} placeholder="e.g. 45" />
+                </div>
+                <div>
+                  <label className={labelCls}>Type</label>
+                  <input className={inputCls} value={sp.propertyType ?? ''} onChange={(e) => update('propertyType', e.target.value)} placeholder="e.g. Multi-residential" />
+                </div>
+                <div>
+                  <label className={labelCls}>Storeys</label>
+                  <input className={inputCls} type="number" value={sp.storeys ?? ''} onChange={(e) => update('storeys', e.target.value)} placeholder="e.g. 12" />
+                </div>
+              </div>
+            </div>
+            )
+          })()}
+
           {/* Address list */}
-          <div className="max-h-[180px] overflow-y-auto px-2 pb-1">
-            {[...selectedAddresses].map((addr, i) => (
+          <div className="max-h-[260px] overflow-visible px-2 pb-1">
+            {[...selectedAddresses].map((addr, i) => {
+              const score = compScores?.[addr]
+              return (
               <div
                 key={addr}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 group transition-colors"
+                className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 group transition-colors relative"
               >
                 <span className="w-4 h-4 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                  {i + 1}
+                  {score?.rank ?? i + 1}
                 </span>
                 <span className="flex-1 text-[12px] text-[#333] truncate">{addr}</span>
+
+                {/* Score info icon with tooltip */}
+                {score && (
+                  <div className="relative flex-shrink-0 group/tip">
+                    <div className="w-4 h-4 rounded-full bg-gray-100 hover:bg-[#3B82F6]/10 flex items-center justify-center cursor-help transition-colors">
+                      <svg className="w-2.5 h-2.5 text-[#999] group-hover/tip:text-[#3B82F6]" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    {/* Tooltip */}
+                    <div className="hidden group-hover/tip:block absolute top-1/2 right-full -translate-y-1/2 mr-2 w-80 bg-white border border-border rounded-xl shadow-xl p-4 z-[100]">
+                      {score.aiReason ? (
+                        <>
+                          <div className="flex items-center justify-between mb-2.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#999]">AI Analysis</span>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${score.aiQuality === 'strong' ? 'bg-green-100 text-green-700' : score.aiQuality === 'good' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {score.aiQuality === 'strong' ? 'Strong Match' : score.aiQuality === 'good' ? 'Good Match' : 'Fair Match'}
+                            </span>
+                          </div>
+                          <p className="text-[12px] text-[#333] leading-relaxed mb-2">{score.aiReason}</p>
+                          {score.aiCaveat && (
+                            <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5">
+                              <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                              <p className="text-[10px] text-amber-800 leading-snug">{score.aiCaveat}</p>
+                            </div>
+                          )}
+                          {score.breakdown && (
+                            <div className="pt-2.5 border-t border-border space-y-1.5">
+                              <span className="text-[9px] text-[#999] uppercase tracking-wider font-medium">Score Breakdown</span>
+                              {Object.entries(score.breakdown).map(([key, b]) => {
+                                const quality = b.score / b.weight
+                                const color = quality < 0.3 ? 'bg-green-500' : quality < 0.6 ? 'bg-amber-500' : 'bg-red-400'
+                                return (
+                                  <div key={key} className="flex items-center gap-2">
+                                    <span className="text-[9px] text-[#777] w-16 flex-shrink-0">{key === 'storeys' ? 'Storeys' : key === 'unitCount' ? 'Units' : key === 'yearBuilt' ? 'Age' : key === 'buildingType' ? 'Type' : 'Distance'}</span>
+                                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(5, 100 - (quality * 100))}%` }} />
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between mb-2.5">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#999]">Match Score</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${score.totalScore < 25 ? 'bg-green-100 text-green-700' : score.totalScore < 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                              {Math.round(100 - score.totalScore)}%
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {score.breakdown && Object.entries(score.breakdown).map(([key, b]) => {
+                              const quality = b.score / b.weight
+                              const color = quality < 0.3 ? 'bg-green-500' : quality < 0.6 ? 'bg-amber-500' : 'bg-red-400'
+                              const label = key === 'storeys' ? 'Storeys' : key === 'unitCount' ? 'Unit Count' : key === 'yearBuilt' ? 'Year Built' : key === 'buildingType' ? 'Building Type' : 'Proximity'
+                              return (
+                                <div key={key}>
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span className="text-[10px] text-[#555]">{label}</span>
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${quality < 0.3 ? 'bg-green-100 text-green-700' : quality < 0.6 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                                      {quality < 0.3 ? 'Strong' : quality < 0.6 ? 'Fair' : 'Weak'}
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(5, 100 - (quality * 100))}%` }} />
+                                  </div>
+                                  <p className="text-[9px] text-[#999] mt-0.5">{b.detail}</p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </>
+                      )}
+                      <div className="absolute top-1/2 right-0 translate-x-full -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[6px] border-l-white" />
+                    </div>
+                  </div>
+                )}
+
                 <button
                   onClick={() => onToggleSelect?.(addr)}
                   className="flex-shrink-0 opacity-0 group-hover:opacity-100 w-4 h-4 rounded flex items-center justify-center text-[#bbb] hover:text-red-400 transition-all"
@@ -1080,7 +1260,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
                   </svg>
                 </button>
               </div>
-            ))}
+            )})}
           </div>
 
           {/* Action */}
