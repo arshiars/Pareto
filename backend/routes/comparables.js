@@ -54,11 +54,13 @@ router.get('/', async (req, res) => {
     }
 
     const previewUrls = new Map()
-    for (const [propId, s3Key] of previewMap) {
-      try {
-        previewUrls.set(propId, await signedGetUrl(s3Key))
-      } catch { /* skip if signing fails */ }
-    }
+    await Promise.allSettled(
+      Array.from(previewMap.entries()).map(async ([propId, s3Key]) => {
+        try {
+          previewUrls.set(propId, await signedGetUrl(s3Key))
+        } catch { /* skip if signing fails */ }
+      })
+    )
 
     const flat = unitsRes.data.map((u) => {
       // Spread all property-level fields, then overlay unit-level fields
@@ -768,7 +770,7 @@ router.post('/research-subject', async (req, res) => {
     const response = await claude.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2048,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
       messages: [{
         role: 'user',
         content: `I need basic property characteristics for this Canadian rental property address:

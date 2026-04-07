@@ -70,7 +70,12 @@ const ALL_COLUMNS = [
     const active = units.filter((u) => !u.move_out || u.move_out >= new Date().toISOString().split('T')[0])
     return (active.length / units.length) * 100
   }},
-  { key: 'yearBuilt', label: 'Year Built', type: 'number', getValue: (units) => units[0]?.year_built ?? null },
+  { key: 'yearBuilt', label: 'Year Built', type: 'year', getValue: (units) => {
+    const val = units[0]?.year_built
+    if (val == null) return null
+    const n = Number(val)
+    return isNaN(n) ? null : n
+  }},
   { key: 'constructionType', label: 'Frame', type: 'text', getValue: (units) => {
     const ct = units[0]?.construction_type
     return ct ? ct.charAt(0).toUpperCase() + ct.slice(1) : '—'
@@ -93,7 +98,7 @@ const ALL_COLUMNS = [
   }},
 ]
 
-const DEFAULT_COLUMN_KEYS = ['address', 'unitCount', 'avgRent', 'avgSqft', 'psf', 'yearBuilt', 'constructionType', 'occupancy']
+const DEFAULT_COLUMN_KEYS = ['address', 'unitCount', 'avgRent', 'avgSqft', 'psf', 'yearBuilt', 'latestMoveIn', 'occupancy']
 
 function formatValue(val, type) {
   if (val == null) return '—'
@@ -103,6 +108,7 @@ function formatValue(val, type) {
     case 'number': return fmtNum(val)
     case 'number_decimal': return fmtNum(val, 1)
     case 'percent': return fmtNum(val, 1) + '%'
+    case 'year': return String(Math.round(Number(val)))
     case 'date': return val
     default: return String(val)
   }
@@ -110,7 +116,7 @@ function formatValue(val, type) {
 
 // ─── Edit helpers ─────────────────────────────────────────────────────────────
 
-const NUMERIC_TYPES = ['currency', 'currency_decimal', 'number', 'number_decimal', 'percent']
+const NUMERIC_TYPES = ['currency', 'currency_decimal', 'number', 'number_decimal', 'percent', 'year']
 
 function rawEditValue(val, type) {
   if (val == null) return ''
@@ -131,7 +137,7 @@ function parseEditValue(str, type) {
 // ─── Summary row calculation ──────────────────────────────────────────────────
 
 function computeSummary(propertyDataRows, columns) {
-  const numericTypes = ['currency', 'currency_decimal', 'number', 'number_decimal', 'percent']
+  const numericTypes = ['currency', 'currency_decimal', 'number', 'number_decimal', 'percent', 'year']
   const result = {}
 
   for (const col of columns) {
@@ -140,7 +146,11 @@ function computeSummary(propertyDataRows, columns) {
       continue
     }
 
-    const vals = propertyDataRows.map((r) => r[col.key]).filter((v) => v != null)
+    const vals = propertyDataRows
+      .map((r) => r[col.key])
+      .filter((v) => v != null)
+      .map(Number)
+      .filter((v) => !isNaN(v))
     result[col.key] = {
       min: vals.length > 0 ? Math.min(...vals) : null,
       max: vals.length > 0 ? Math.max(...vals) : null,

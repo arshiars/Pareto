@@ -698,7 +698,11 @@ export default function RentComparablesPage() {
   const [enrichResult, setEnrichResult] = useState(null)
   // Auto-suggest comp scores: { [address]: { totalScore, breakdown, rank } }
   const [compScores, setCompScores] = useState({})
-  const [suggestingComps, setSuggestingComps] = useState(false)
+  const [suggestSteps, setSuggestSteps] = useState(null) // null = idle, array = step objects while running
+
+  function updateSuggestStep(id, updates) {
+    setSuggestSteps((prev) => prev ? prev.map((s) => s.id === id ? { ...s, ...updates } : s) : prev)
+  }
   const [subjectProfile, setSubjectProfile] = useState(null) // cached subject profile for display
   const [historyView, setHistoryView] = useState('list')
   // The slug from the URL — used to resolve selectedProperty once history loads
@@ -957,10 +961,19 @@ export default function RentComparablesPage() {
   async function autoSuggestComps(subjectCoords, geocodedMap) {
     if (!subjectCoords || history.length === 0) return
 
-    setSuggestingComps(true)
+    setSuggestSteps([
+      { id: 'scan',    label: 'Scanning database',          status: 'active',  detail: null },
+      { id: 'subject', label: 'Building subject profile',   status: 'pending', detail: null },
+      { id: 'score',   label: 'Scoring candidates',         status: 'pending', detail: null },
+      { id: 'ai',      label: 'AI selecting best matches',  status: 'pending', detail: null },
+    ])
     setError(null)
 
     try {
+      // Kick off web research in parallel with DB scan (subject may not be in DB)
+      const searchAddress = subjectLabel || 'Unknown address'
+      const researchPromise = researchSubjectProperty(searchAddress).catch(() => null)
+
       // Group units by property
       const propMap = new Map()
       for (const unit of history) {
@@ -979,19 +992,43 @@ export default function RentComparablesPage() {
         if (d < minDist) { minDist = d; subjectAddress = address }
       }
 
+      updateSuggestStep('scan', { status: 'done', detail: `${propMap.size} properties in database` })
+
       // Build subject profile
       let profile
       if (subjectAddress && minDist < 0.3) {
         // Subject is in our DB — use its actual data
-        profile = buildPropertyProfile(propMap.get(subjectAddress))
-        profile.source = 'database'
-        profile.address = subjectAddress
+        updateSuggestStep('subject', { status: 'active', detail: `Found in database — loading…` })
+        const dbProfile = buildPropertyProfile(propMap.get(subjectAddress))
+        // If DB is missing key fields, supplement with web research
+        const needsResearch = !dbProfile.yearBuilt || !dbProfile.storeys || !dbProfile.propertyType
+        if (needsResearch) {
+          const research = await researchPromise
+          if (research) {
+            const numUnits = research.num_units != null && research.num_units > 0 && research.num_units < 2000 ? research.num_units : null
+            const yearBuilt = research.year_built != null && research.year_built > 1800 && research.year_built <= new Date().getFullYear() ? research.year_built : null
+            profile = {
+              unitCount: dbProfile.unitCount || numUnits || 0,
+              storeys: dbProfile.storeys ?? research.num_storeys ?? null,
+              yearBuilt: dbProfile.yearBuilt ?? yearBuilt,
+              propertyType: dbProfile.propertyType ?? research.property_type ?? null,
+              constructionFrame: dbProfile.constructionFrame ?? research.construction_frame ?? null,
+              summary: research.summary ?? null,
+              source: 'database+web',
+              address: subjectAddress,
+            }
+          } else {
+            profile = { ...dbProfile, source: 'database', address: subjectAddress }
+          }
+        } else {
+          profile = { ...dbProfile, source: 'database', address: subjectAddress }
+        }
+        updateSuggestStep('subject', { status: 'done', detail: `Found in database · ${[profile.unitCount && `${profile.unitCount} units`, profile.storeys && `${profile.storeys} storeys`, profile.yearBuilt && `built ${profile.yearBuilt}`].filter(Boolean).join(' · ')}` })
       } else {
-        // Subject NOT in our DB — research it via Claude
-        const searchAddress = subjectLabel || 'Unknown address'
-        try {
-          const research = await researchSubjectProperty(searchAddress)
-          // Sanity check AI response — reject clearly wrong values
+        // Subject NOT in our DB — use web research
+        updateSuggestStep('subject', { status: 'active', detail: `Searching web for ${searchAddress.split(',')[0]}…` })
+        const research = await researchPromise
+        if (research) {
           const numUnits = research.num_units != null && research.num_units > 0 && research.num_units < 2000 ? research.num_units : null
           const yearBuilt = research.year_built != null && research.year_built > 1800 && research.year_built <= new Date().getFullYear() ? research.year_built : null
           profile = {
@@ -1004,7 +1041,15 @@ export default function RentComparablesPage() {
             source: 'web_research',
             address: searchAddress,
           }
-        } catch {
+          const profileDetail = [
+            profile.unitCount && `${profile.unitCount} units`,
+            profile.storeys && `${profile.storeys} storeys`,
+            profile.yearBuilt && `built ${profile.yearBuilt}`,
+            profile.propertyType,
+            profile.constructionFrame && `${profile.constructionFrame} frame`,
+          ].filter(Boolean).join(' · ')
+          updateSuggestStep('subject', { status: 'done', detail: profileDetail || 'Profile built from web research' })
+        } else {
           // Fallback: empty profile for manual entry
           profile = {
             unitCount: 0,
@@ -1016,12 +1061,14 @@ export default function RentComparablesPage() {
             source: 'manual',
             address: searchAddress,
           }
+          updateSuggestStep('subject', { status: 'done', detail: 'Scoring by proximity only' })
         }
       }
 
       setSubjectProfile(profile)
 
       // Phase 1: Numeric pre-filter — score all candidates, keep top 10
+      updateSuggestStep('score', { status: 'active', detail: 'Evaluating proximity, age, size & type…' })
       const scored = []
       for (const [address, units] of propMap) {
         if (address === subjectAddress) continue
@@ -1041,8 +1088,10 @@ export default function RentComparablesPage() {
 
       scored.sort((a, b) => a.totalScore - b.totalScore)
       const shortlist = scored.slice(0, 10)
+      updateSuggestStep('score', { status: 'done', detail: `${scored.length} properties evaluated · ${shortlist.length} shortlisted` })
 
       // Phase 2: AI reasoning — Claude picks the best 5 from the 10 with explanations
+      updateSuggestStep('ai', { status: 'active', detail: `Reviewing ${shortlist.length} candidates…` })
       let aiPicks = null
       try {
         const candidatesForAI = shortlist.map((s) => ({
@@ -1058,8 +1107,10 @@ export default function RentComparablesPage() {
         }))
         const result = await aiRankComps(profile, candidatesForAI)
         aiPicks = result.picks
+        updateSuggestStep('ai', { status: 'done', detail: `${aiPicks.length} best matches selected` })
       } catch (aiErr) {
         console.warn('AI ranking failed, falling back to numeric scoring:', aiErr.message)
+        updateSuggestStep('ai', { status: 'done', detail: 'Ranked by numeric scoring' })
       }
 
       // Build final selection
@@ -1093,7 +1144,7 @@ export default function RentComparablesPage() {
     } catch (err) {
       setError(err.message)
     } finally {
-      setSuggestingComps(false)
+      setTimeout(() => setSuggestSteps(null), 2000)
     }
   }
 
@@ -1406,7 +1457,13 @@ export default function RentComparablesPage() {
 
   return (
     <div className={`bg-background flex flex-col ${view === 'map' || view === 'comptable' ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
-      <PageHeader onBack={view !== 'map' ? () => { navigate(BASE); setSelectedProperty(null); setSelectedPropertyId(null) } : () => navigate('/comparable-analysis')} />
+      <PageHeader onBack={
+        view === 'property'
+          ? () => { navigate(-1); setSelectedProperty(null); setSelectedPropertyId(null) }
+          : view !== 'map'
+          ? () => navigate(BASE)
+          : () => navigate('/comparable-analysis')
+      } />
 
       {error && (
         <div className="px-8 pt-4 flex-shrink-0">
@@ -1557,7 +1614,7 @@ export default function RentComparablesPage() {
                   onOpenCompTable={() => setView('comptable')}
                   onSelectProperty={handleSelectProperty}
                   onAutoSuggest={(geocodedMap) => autoSuggestComps(pinStarCoords, geocodedMap)}
-                  suggestingComps={suggestingComps}
+                  suggestSteps={suggestSteps}
                   compScores={compScores}
                   subjectProfile={subjectProfile}
                   onSubjectProfileChange={setSubjectProfile}

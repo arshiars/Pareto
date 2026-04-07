@@ -241,14 +241,21 @@ export async function aiRankComps(subject, candidates) {
 }
 
 export async function researchSubjectProperty(address) {
-  const res = await fetch(`${BASE_URL}/comparables/research-subject`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    credentials: 'include',
-    body: JSON.stringify({ address }),
-  })
-  if (!res.ok) throw new Error(await parseError(res))
-  return res.json()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE_URL}/comparables/research-subject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      credentials: 'include',
+      body: JSON.stringify({ address }),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(await parseError(res))
+    return res.json()
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function researchMarketData(propertyId) {
