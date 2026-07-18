@@ -70,3 +70,7 @@ services:
         sync: false          # https://mdborjnavqcinrjnqqsw.supabase.co
       - key: VITE_SUPABASE_ANON_KEY
         sync: false          # Supabase publishable/anon key
+      - key: VITE_GOOGLE_MAPS_KEY
+        sync: false          # Google Maps API key
+      - key: VITE_MAPBOX_TOKEN
+        sync: false          # Mapbox access token
