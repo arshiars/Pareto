@@ -249,7 +249,7 @@ function PropertyCard({ prop, searchCoords, onClick, isSelected, onToggleSelect 
 
 export default function ComparablesMap({ units, onSelectProperty, searchCoords, pinStarCoords, onPinStarChange, highlightAddress, selectedAddresses, onToggleSelect, onClearSelected, onOpenCompTable, onAutoSuggest, suggestSteps, compScores, subjectProfile, onSubjectProfileChange, onRescore }) {
   const mapRef = useRef(null)
-  const [viewState, setViewState] = useState({ longitude: -73.5673, latitude: 45.5017, zoom: 11 })
+  const [viewState, setViewState] = useState({ longitude: -79.383, latitude: 43.653, zoom: 11 })
   const [geocoded, setGeocoded] = useState(() => {
     try { return JSON.parse(localStorage.getItem('pareto_geocache') || '{}') } catch { return {} }
   })
