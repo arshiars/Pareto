@@ -23,7 +23,7 @@ export default function Layout({ children, subtitle = 'CMHC Underwriting', backT
               </>
             )}
             <div>
-              <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
+              <h1 className="text-primary text-lg font-bold tracking-tight">Pareto</h1>
               <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">{subtitle}</p>
             </div>
             <div className="h-6 w-px bg-border" />

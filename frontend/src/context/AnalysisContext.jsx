@@ -53,7 +53,7 @@ function reducer(state, action) {
   }
 }
 
-const CACHE_KEY = 'fundus_analysis_state'
+const CACHE_KEY = 'pareto_analysis_state'
 
 function getHydratedState() {
   try {

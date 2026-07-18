@@ -246,11 +246,11 @@ export default function SummaryPage() {
         <div className="bg-primary px-6 py-5">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-white text-lg font-bold">Fundus — CMHC Underwriting</h1>
+              <h1 className="text-white text-lg font-bold">Pareto — CMHC Underwriting</h1>
               <p className="text-white/60 text-sm mt-0.5">{propInfo?.address || 'Property Address Not Specified'}</p>
             </div>
             <div className="text-right">
-              <p className="text-white/60 text-xs">Prepared by Fundus</p>
+              <p className="text-white/60 text-xs">Prepared by Pareto</p>
               <p className="text-white/60 text-xs">{today}</p>
               {propInfo?.totalUnits && <p className="text-accent text-sm font-semibold mt-1">{propInfo.totalUnits} Units</p>}
             </div>
@@ -372,7 +372,7 @@ export default function SummaryPage() {
         {/* Footer */}
         <div className="px-6 py-4 bg-background border-t border-border flex justify-between items-center">
           <p className="text-xs text-gray-400">For CMHC underwriting purposes only. Verify all values independently.</p>
-          <p className="text-xs text-gray-400">Fundus Underwriting Tool</p>
+          <p className="text-xs text-gray-400">Pareto Underwriting Tool</p>
         </div>
       </div>
 

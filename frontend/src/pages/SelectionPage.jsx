@@ -84,7 +84,7 @@ export default function SelectionPage() {
         <div className="max-w-5xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
+              <h1 className="text-primary text-lg font-bold tracking-tight">Pareto</h1>
               <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
             <div className="h-6 w-px bg-border" />

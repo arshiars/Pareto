@@ -179,7 +179,7 @@ function PageHeader({ onBack }) {
           </button>
           <div className="h-6 w-px bg-border" />
           <div>
-            <h1 className="text-primary text-lg font-bold tracking-tight">Fundus</h1>
+            <h1 className="text-primary text-lg font-bold tracking-tight">Pareto</h1>
             <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
           </div>
           <div className="h-6 w-px bg-border" />
@@ -730,7 +730,7 @@ export default function RentComparablesPage() {
   const [highlightAddress, setHighlightAddress] = useState(null)
   const [selectedAddresses, setSelectedAddresses] = useState(() => {
     try {
-      const saved = localStorage.getItem('fundus_selected_addresses')
+      const saved = localStorage.getItem('pareto_selected_addresses')
       return saved ? new Set(JSON.parse(saved)) : new Set()
     } catch { return new Set() }
   })
@@ -1407,7 +1407,7 @@ export default function RentComparablesPage() {
   }, [view])
 
   useEffect(() => {
-    localStorage.setItem('fundus_selected_addresses', JSON.stringify([...selectedAddresses]))
+    localStorage.setItem('pareto_selected_addresses', JSON.stringify([...selectedAddresses]))
   }, [selectedAddresses])
 
   useEffect(() => {

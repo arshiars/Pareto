@@ -106,7 +106,7 @@ export default function UploadPage() {
             <h2 className="text-2xl font-bold text-primary tracking-tight">Upload Property Documents</h2>
             <p className="text-[#777777] text-sm mt-1.5">
               Upload broker CIM, rent rolls, operating statements, and other relevant documents.
-              Fundus will extract all financial data automatically.
+              Pareto will extract all financial data automatically.
             </p>
           </div>
 

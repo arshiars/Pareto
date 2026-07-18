@@ -34,7 +34,7 @@ function reducer(state, action) {
   }
 }
 
-const CACHE_KEY = 'fundus_ipp_state'
+const CACHE_KEY = 'pareto_ipp_state'
 
 function getHydratedState() {
   try {

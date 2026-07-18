@@ -251,7 +251,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
   const mapRef = useRef(null)
   const [viewState, setViewState] = useState({ longitude: -73.5673, latitude: 45.5017, zoom: 11 })
   const [geocoded, setGeocoded] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('fundus_geocache') || '{}') } catch { return {} }
+    try { return JSON.parse(localStorage.getItem('pareto_geocache') || '{}') } catch { return {} }
   })
   const [selected, setSelected] = useState(null)
   const [sidebarData, setSidebarData] = useState(null)
@@ -331,7 +331,7 @@ export default function ComparablesMap({ units, onSelectProperty, searchCoords, 
           if (center) {
             setGeocoded((prev) => {
               const next = { ...prev, [address]: { lng: center[0], lat: center[1] } }
-              try { localStorage.setItem('fundus_geocache', JSON.stringify(next)) } catch {}
+              try { localStorage.setItem('pareto_geocache', JSON.stringify(next)) } catch {}
               return next
             })
           }

@@ -1,7 +1,7 @@
 services:
   # ── Backend ──────────────────────────────────────────────────────────────────
   - type: web
-    name: fundus-backend
+    name: pareto-backend
     runtime: node
     rootDir: backend
     buildCommand: npm install
@@ -12,7 +12,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false          # set manually in Render dashboard
       - key: FRONTEND_URL
-        sync: false          # e.g. https://fundus-frontend.onrender.com
+        sync: false          # e.g. https://pareto-frontend.onrender.com
       - key: GATEWAY_PASSWORD
         sync: false          # the password users enter to access the app
       - key: GATEWAY_SECRET
@@ -32,7 +32,7 @@ services:
 
   # ── Pipeline Worker (Cron) ─────────────────────────────────────────────────
   - type: cron
-    name: fundus-pipeline-worker
+    name: pareto-pipeline-worker
     runtime: node
     rootDir: backend
     buildCommand: npm install
@@ -58,14 +58,14 @@ services:
 
   # ── Frontend ─────────────────────────────────────────────────────────────────
   - type: web
-    name: fundus-frontend
+    name: pareto-frontend
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        sync: false          # e.g. https://fundus-backend.onrender.com
+        sync: false          # e.g. https://pareto-backend.onrender.com
       - key: VITE_SUPABASE_URL
         sync: false          # https://mdborjnavqcinrjnqqsw.supabase.co
       - key: VITE_SUPABASE_ANON_KEY
