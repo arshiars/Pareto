@@ -2,7 +2,7 @@
 
 ## Table: `cmhc_loans`
 
-KingSett Capital's approved CMHC-insured multi-unit residential loan portfolio.
+Pareto's approved CMHC-insured multi-unit residential loan portfolio.
 
 ### Critical formatting rules
 - **Ratios stored as decimals**: cap_rate, ltv_net, ltv_gross, opex_ratio, commercial_cap_rate, commercial_opex_ratio, noi_per_debt are stored as decimals. 0.045 = 4.5%, 0.552 = 55.2%. To filter for cap rate above 5%, use `cap_rate > 0.05`. To display, multiply by 100.
@@ -15,13 +15,13 @@ KingSett Capital's approved CMHC-insured multi-unit residential loan portfolio.
 | Column | Type | Description | Example |
 |--------|------|-------------|---------|
 | id | uuid | Primary key | - |
-| loan_number | text | KingSett loan ID | 'C1001' |
+| loan_number | text | Internal loan ID | 'C1001' |
 | fn_loan_number | text | Alliance/FN number | '580000' |
 | loan_name | text | Deal name | 'Stationview, Guelph' |
 | address | text | Street address | '82-94 Carden Street' |
 | city | text | City | 'Guelph' |
 | province | text | Province code | 'ON', 'BC', 'QC', 'AB', 'MB', 'SK', 'NS', 'NB' |
-| region | text | KingSett region | 'No Region' |
+| region | text | Internal region | 'No Region' |
 | asset_type | text | Property type | 'Residential', 'Residential/Retail' |
 | year_built | integer | Year constructed | 1969 |
 | funding_date | date | Loan funding date | '2022-03-30' |

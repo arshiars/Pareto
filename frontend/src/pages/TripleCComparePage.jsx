@@ -128,7 +128,6 @@ export default function TripleCComparePage({ onBack, initialIds = [] }) {
                 </button>
               </div>
             )}
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
           </div>
         </div>
       </header>

@@ -136,7 +136,7 @@ Return ONLY a valid JSON object (no markdown fences):
 }
 
 export function buildPptSuggestionsPrompt(extractedData) {
-  return `You are a senior CMHC underwriting analyst at KingSett Capital preparing investment committee slide content.
+  return `You are a senior CMHC underwriting analyst at Pareto preparing investment committee slide content.
 
 Extracted data:
 ${JSON.stringify(extractedData, null, 2)}

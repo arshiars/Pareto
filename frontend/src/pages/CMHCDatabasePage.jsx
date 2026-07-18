@@ -460,7 +460,6 @@ export default function CMHCDatabasePage() {
               <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
             </div>
             <div className="h-6 w-px bg-border" />
-            <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
           </div>
           <div className="flex items-center gap-3">
             {importMsg && (
@@ -486,7 +485,6 @@ export default function CMHCDatabasePage() {
               )}
               {importing ? 'Importing...' : 'Import from Excel'}
             </button>
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-12 w-auto" />
           </div>
         </div>
       </header>

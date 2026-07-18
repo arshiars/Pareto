@@ -164,7 +164,6 @@ export default function TripleCProjectPage({ projectId, onBack, onEdit }) {
               </svg>
               {deleting ? 'Deleting…' : 'Delete'}
             </button>
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto ml-2" />
           </div>
         </div>
       </header>

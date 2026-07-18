@@ -205,7 +205,7 @@ Rules:
 }
 
 export function buildExcelCommentPrompt(fields) {
-  return `You are a commercial real estate underwriting analyst at KingSett Capital populating an IPP underwriting Excel model.
+  return `You are a commercial real estate underwriting analyst at Pareto populating an IPP underwriting Excel model.
 
 For each field below, write a comment to place beside that cell in the spreadsheet. Each comment must be 1–2 sentences maximum and must cover one or more of:
 - The document source the value came from (name it specifically)
@@ -224,7 +224,7 @@ ${JSON.stringify(fields, null, 2)}`
 }
 
 export function buildDealSummaryPrompt() {
-  return `You are a senior commercial real estate underwriting analyst at KingSett Capital. You will be given extracted data from an Income Producing Property (IPP) underwriting package as JSON.
+  return `You are a senior commercial real estate underwriting analyst at Pareto. You will be given extracted data from an Income Producing Property (IPP) underwriting package as JSON.
 
 Analyze the data and return a single valid JSON object only — no markdown, no prose.
 

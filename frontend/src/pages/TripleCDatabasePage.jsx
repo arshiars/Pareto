@@ -149,10 +149,8 @@ export default function TripleCDatabasePage({ onBack, onAddProject, onSelectProj
               <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Construction Cost Database</p>
             </div>
             <div className="h-6 w-px bg-border" />
-            <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
           </div>
           <div className="flex items-center gap-4">
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
           </div>
         </div>
       </header>

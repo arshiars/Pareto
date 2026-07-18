@@ -22,7 +22,7 @@ Extract the following fields and return ONLY a valid JSON object with no additio
 }
 
 export function buildConditionSuggestionPrompt(propertyDescription, existingConditions) {
-  return `You are a Canadian commercial mortgage underwriter at KingSett Capital drafting a Letter of Intent (LOI).
+  return `You are a Canadian commercial mortgage underwriter at Pareto drafting a Letter of Intent (LOI).
 
 Property: ${propertyDescription || 'Multi-residential property'}
 
@@ -36,7 +36,7 @@ Return ONLY a JSON array of 2 strings, no explanation:
 }
 
 export function buildConditionRephrasPrompt(userText) {
-  return `You are a Canadian commercial mortgage underwriter at KingSett Capital. Rephrase the following user-provided condition precedent into professional formal legal language suitable for a Letter of Intent (LOI) from a mortgage lender. Match the tone and style of standard CMHC/conventional lending conditions.
+  return `You are a Canadian commercial mortgage underwriter at Pareto. Rephrase the following user-provided condition precedent into professional formal legal language suitable for a Letter of Intent (LOI) from a mortgage lender. Match the tone and style of standard CMHC/conventional lending conditions.
 
 User text: "${userText}"
 

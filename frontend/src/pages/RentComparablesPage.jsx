@@ -183,9 +183,7 @@ function PageHeader({ onBack }) {
             <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>
           </div>
           <div className="h-6 w-px bg-border" />
-          <span className="text-[#555555] text-xs tracking-widest uppercase font-medium">KingSett Capital</span>
         </div>
-        <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
       </div>
     </header>
   )

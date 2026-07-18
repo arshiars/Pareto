@@ -26,7 +26,6 @@ export default function Gateway({ onAuthenticated }) {
       <div className="w-full max-w-sm">
         <div className="bg-white border border-border rounded-[2px] p-8">
           <div className="mb-6 flex items-center gap-4">
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
             <div>
               <h1 className="text-primary text-lg font-bold tracking-tight">Pareto</h1>
               <p className="text-[#777777] text-xs mt-0.5 tracking-wide uppercase">Real Estate Underwriting</p>

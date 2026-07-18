@@ -123,7 +123,6 @@ export default function TripleCAnalyticsPage({ onBack }) {
                 $/unit
               </button>
             </div>
-            <img src="/kingsett-logo.png" alt="KingSett Capital" className="h-14 w-auto" />
           </div>
         </div>
       </header>

@@ -58,8 +58,8 @@ const FIELD_DEFS = [
   { key: 'mortgagePriority',            label: 'Mortgage Priority',                   group: 'Security',           type: 'select',  textarea: false, options: MORTGAGE_PRIORITY_OPTIONS },
   { key: 'availability',                label: 'Availability',                        group: 'Other',              type: 'select',  textarea: false, rowKey: 'availability', options: AVAILABILITY_OPTIONS },
   { key: 'acceptanceDeadline',          label: 'Acceptance Deadline',                 group: 'Other',              type: 'date',    textarea: false },
-  { key: 'originatorName',              label: 'Originator Name',                     group: 'KingSett Signatories', type: 'text',  textarea: false },
-  { key: 'underwriterName',             label: 'Underwriter Name',                    group: 'KingSett Signatories', type: 'text',  textarea: false },
+  { key: 'originatorName',              label: 'Originator Name',                     group: 'Lender Signatories', type: 'text',  textarea: false },
+  { key: 'underwriterName',             label: 'Underwriter Name',                    group: 'Lender Signatories', type: 'text',  textarea: false },
 ]
 
 const GROUPS = [...new Set(FIELD_DEFS.map(f => f.group))]

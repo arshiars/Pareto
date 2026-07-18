@@ -14,7 +14,7 @@ async function getSchema() {
 
 export async function buildSqlGenerationPrompt(question) {
   const schema = await getSchema()
-  return `You are a SQL expert. Generate a single SQL SELECT query to answer the user's question about KingSett Capital's CMHC loan database. The SQL runs on alasql (an in-memory JavaScript SQL engine), not PostgreSQL.
+  return `You are a SQL expert. Generate a single SQL SELECT query to answer the user's question about Pareto's CMHC loan database. The SQL runs on alasql (an in-memory JavaScript SQL engine), not PostgreSQL.
 
 ${schema}
 
@@ -57,7 +57,7 @@ export async function buildAnalysisPrompt(question, sql, results) {
     resultText = `${headers}\n${divider}\n${dataRows}\n\n(${rowCount} row${rowCount !== 1 ? 's' : ''} returned)`
   }
 
-  return `You are a senior real estate analyst at KingSett Capital. A SQL query was run against the approved CMHC loan database. Interpret the results and answer the user's question clearly and professionally.
+  return `You are a senior real estate analyst at Pareto. A SQL query was run against the approved CMHC loan database. Interpret the results and answer the user's question clearly and professionally.
 
 Question: ${question}
 
